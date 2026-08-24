@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
+
+    <meta name="description"
+          content="Interactive Solar Power Plant Daily Generation Report Dashboard">
+
+    <title>SRI1PL | Solar DGR Dashboard</title>
+
+    <!-- ==============================
+         GOOGLE FONT
+    =============================== -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+        rel="stylesheet"
+    >
+
+    <!-- ==============================
+         CHART.JS
+    =============================== -->
+    <script
+        src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js">
+    </script>
+
+    <!-- ==============================
+         SHEETJS
+         Used to read Excel DGR files
+    =============================== -->
+    <script
+        src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js">
+    </script>
+
+    <!-- ==============================
+         MAIN CSS
+    =============================== -->
+    <link rel="stylesheet" href="styles.css">
+
+</head>
+
+
+<body>
+
+<div class="app">
+
+
+    <!-- =====================================================
+         SIDEBAR
+    ====================================================== -->
+
+    <aside class="sidebar">
+
+        <!-- BRAND -->
+        <div class="brand">
+
+            <div class="brand-logo">
+                S
+            </div>
+
+            <div class="brand-text">
+
+                <strong>
+                    SOLAR DGR
+                </strong>
+
+                <span>
+                    Performance Monitor
+                </span>
+
+            </div>
+
+        </div>
+
+
+        <!-- NAVIGATION -->
+
+        <nav class="sidebar-nav">
+
+            <a href="#dashboard"
+               class="nav-item active">
+
+                <span class="nav-icon">
+                    ◉
+                </span>
+
+                <span>
+                    Dashboard
+                </span>
+
+            </a>
+
+
+            <a href="#upload"
+               class="nav-item">
+
+                <span class="nav-icon">
+                    ↑
+                </span>
+
+                <span>
+                    DGR Upload
+                </span>
+
+            </a>
+
+        </nav>
+
+
+        <!-- PLANT INFORMATION -->
+
+        <div class="plant-info">
+
+            <span class="plant-label">
+                PLANT
+            </span>
+
+            <strong id="plantName">
+                SRI1PL
+            </strong>
+
+            <span
+                id="plantCapacity"
+                class="plant-capacity">
+
+                252.34 MWp DC
+
+            </span>
+
+        </div>
+
+
+        <!-- SIDEBAR FOOTER -->
+
+        <div class="sidebar-footer">
+
+            <span>
+                Solar Generation Analytics
+            </span>
+
+        </div>
+
+    </aside>
+
+
+
+    <!-- =====================================================
+         MAIN CONTENT
+    ====================================================== -->
+
+    <main class="main-content">
+
+
+        <!-- =================================================
+             TOP HEADER
+        ================================================== -->
+
+        <header class="top-header">
+
+
+            <div class="header-left">
+
+                <div class="eyebrow">
+                    DAILY GENERATION REPORT
+                </div>
+
+                <h1>
+                    Plant Performance Dashboard
+                </h1>
+
+                <p
+                    id="dataStatus"
+                    class="data-status">
+
+                    No DGR loaded.
+                    Upload the Daily Generation Report
+                    to begin analysis.
+
+                </p>
+
+            </div>
+
+
+            <!-- UPLOAD BUTTON -->
+
+            <div class="header-actions">
+
+                <label
+                    for="dgrInput"
+                    class="upload-button">
+
+                    <span class="upload-icon">
+                        ↑
+                    </span>
+
+                    Upload DGR
+
+                </label>
+
+                <input
+                    type="file"
+                    id="dgrInput"
+                    accept=".xlsx,.xls,.csv"
+                    hidden>
+
+            </div>
+
+        </header>
+
+
+
+        <!-- =================================================
+             DASHBOARD CONTROLS
+        ================================================== -->
+
+        <section
+            id="dashboard"
+            class="dashboard-controls">
+
+
+            <!-- DATE RANGE -->
+
+            <div class="range-section">
+
+                <span class="control-label">
+                    PERIOD
+                </span>
+
+                <div class="range-buttons">
+
+                    <button
+                        class="range-button"
+                        data-range="7">
+
+                        7 Days
+
+                    </button>
+
+
+                    <button
+                        class="range-button selected"
+                        data-range="30">
+
+                        30 Days
+
+                    </button>
+
+
+                    <button
+                        class="range-button"
+                        data-range="90">
+
+                        90 Days
+
+                    </button>
+
+
+                    <button
+                        class="range-button"
+                        data-range="all">
+
+                        All Data
+
+                    </button>
+
+                </div>
+
+            </div>
+
+
+
+            <!-- CUSTOM DATE -->
+
+            <div class="date-section">
+
+                <span class="control-label">
+                    CUSTOM DATE
+                </span>
+
+
+                <div class="date-controls">
+
+                    <div class="date-input">
+
+                        <label for="fromDate">
+                            From
+                        </label>
+
+                        <input
+                            type="date"
+                            id="fromDate">
+
+                    </div>
+
+
+                    <div class="date-input">
+
+                        <label for="toDate">
+                            To
+                        </label>
+
+                        <input
+                            type="date"
+                            id="toDate">
+
+                    </div>
+
+
+                    <button
+                        id="applyDate"
+                        class="apply-button">
+
+                        Apply
+
+                    </button>
+
+
+                    <button
+                        id="resetDate"
+                        class="reset-button">
+
+                        Reset
+
+                    </button>
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+
+        <!-- =================================================
+             KPI CARDS
+        ================================================== -->
+
+        <section class="kpi-grid">
+
+
+            <!-- PA -->
+
+            <article class="kpi-card">
+
+                <div class="kpi-header">
+
+                    <span>
+                        Plant Availability
+                    </span>
+
+                    <div class="kpi-symbol">
+                        PA
+                    </div>
+
+                </div>
+
+                <strong
+                    id="kpiPA"
+                    class="kpi-value">
+
+                    —
+
+                </strong>
+
+                <small
+                    id="kpiPADetail">
+
+                    Latest available day
+
+                </small>
+
+            </article>
+
+
+
+            <!-- PR -->
+
+            <article class="kpi-card">
+
+                <div class="kpi-header">
+
+                    <span>
+                        Performance Ratio
+                    </span>
+
+                    <div class="kpi-symbol">
+                        PR
+                    </div>
+
+                </div>
+
+                <strong
+                    id="kpiPR"
+                    class="kpi-value">
+
+                    —
+
+                </strong>
+
+                <small
+                    id="kpiPRDetail">
+
+                    Latest available day
+
+                </small>
+
+            </article>
+
+
+
+            <!-- AEY -->
+
+            <article class="kpi-card">
+
+                <div class="kpi-header">
+
+                    <span>
+                        Annual Energy Yield
+                    </span>
+
+                    <div class="kpi-symbol">
+                        AEY
+                    </div>
+
+                </div>
+
+                <strong
+                    id="kpiAEY"
+                    class="kpi-value">
+
+                    —
+
+                </strong>
+
+                <small>
+
+                    kWh/kWp cumulative
+
+                </small>
+
+            </article>
+
+
+
+            <!-- GENERATION -->
+
+            <article class="kpi-card">
+
+                <div class="kpi-header">
+
+                    <span>
+                        Actual Generation
+                    </span>
+
+                    <div class="kpi-symbol">
+                        MWh
+                    </div>
+
+                </div>
+
+                <strong
+                    id="kpiGen"
+                    class="kpi-value">
+
+                    —
+
+                </strong>
+
+                <small
+                    id="kpiGenDetail">
+
+                    Latest 220 kV net export
+
+                </small>
+
+            </article>
+
+        </section>
+
+
+
+        <!-- =================================================
+             CHART GRID
+        ================================================== -->
+
+        <section class="chart-grid">
+
+
+            <!-- =============================================
+                 PLANT AVAILABILITY
+            ============================================== -->
+
+            <article class="chart-card wide">
+
+                <div class="chart-header">
+
+                    <div>
+
+                        <h2>
+                            Plant Availability
+                        </h2>
+
+                        <p>
+                            Daily plant availability recorded
+                            in the DGR.
+                        </p>
+
+                    </div>
+
+                    <span class="chart-unit">
+                        %
+                    </span>
+
+                </div>
+
+
+                <div class="chart-container">
+
+                    <canvas id="paChart"></canvas>
+
+                </div>
+
+            </article>
+
+
+
+            <!-- =============================================
+                 PERFORMANCE RATIO
+            ============================================== -->
+
+            <article class="chart-card wide">
+
+                <div class="chart-header">
+
+                    <div>
+
+                        <h2>
+                            Performance Ratio
+                        </h2>
+
+                        <p>
+                            Daily performance ratio of the
+                            solar plant.
+                        </p>
+
+                    </div>
+
+                    <span class="chart-unit">
+                        %
+                    </span>
+
+                </div>
+
+
+                <div class="chart-container">
+
+                    <canvas id="prChart"></canvas>
+
+                </div>
+
+            </article>
+
+
+
+            <!-- =============================================
+                 GHI
+            ============================================== -->
+
+            <article class="chart-card">
+
+                <div class="chart-header">
+
+                    <div>
+
+                        <h2>
+                            GHI
+                        </h2>
+
+                        <p>
+                            Global Horizontal Irradiance.
+                        </p>
+
+                    </div>
+
+                    <span class="chart-unit">
+                        kWh/m²
+                    </span>
+
+                </div>
+
+
+                <div class="chart-container">
+
+                    <canvas id="ghiChart"></canvas>
+
+                </div>
+
+            </article>
+
+
+
+            <!-- =============================================
+                 GII / POA
+            ============================================== -->
+
+            <article class="chart-card">
+
+                <div class="chart-header">
+
+                    <div>
+
+                        <h2>
+                            GII / POA
+                        </h2>
+
+                        <p>
+                            Plane-of-array irradiance
+                            from the DGR.
+                        </p>
+
+                    </div>
+
+                    <span class="chart-unit">
+                        kWh/m²
+                    </span>
+
+                </div>
+
+
+                <div class="chart-container">
+
+                    <canvas id="giiChart"></canvas>
+
+                </div>
+
+            </article>
+
+
+
+            <!-- =============================================
+                 MEASURED VS ACTUAL GENERATION
+            ============================================== -->
+
+            <article class="chart-card wide">
+
+                <div class="chart-header">
+
+                    <div>
+
+                        <h2>
+                            Measured Generation vs Actual Generation
+                        </h2>
+
+                        <p>
+                            Comparison of inverter export
+                            against 220 kV net export.
+                        </p>
+
+                    </div>
+
+                    <span class="chart-unit">
+                        kWh
+                    </span>
+
+                </div>
+
+
+                <div class="chart-container chart-large">
+
+                    <canvas id="generationChart"></canvas>
+
+                </div>
+
+            </article>
+
+
+
+            <!-- =============================================
+                 ANNUAL ENERGY YIELD
+            ============================================== -->
+
+            <article class="chart-card wide">
+
+                <div class="chart-header">
+
+                    <div>
+
+                        <h2>
+                            Annual Energy Yield
+                        </h2>
+
+                        <p>
+                            Cumulative net generation divided
+                            by installed DC capacity.
+                        </p>
+
+                    </div>
+
+                    <span class="chart-unit">
+                        kWh/kWp
+                    </span>
+
+                </div>
+
+
+                <div class="chart-container">
+
+                    <canvas id="aeyChart"></canvas>
+
+                </div>
+
+            </article>
+
+
+        </section>
+
+
+
+        <!-- =================================================
+             DGR UPLOAD SECTION
+        ================================================== -->
+
+        <section
+            id="upload"
+            class="upload-section">
+
+
+            <div class="upload-header">
+
+                <div>
+
+                    <div class="eyebrow">
+                        DATA ACQUISITION
+                    </div>
+
+                    <h2>
+                        Upload Daily Generation Report
+                    </h2>
+
+                    <p>
+                        Upload the plant's Excel or CSV DGR.
+                        The dashboard will automatically
+                        read the Daily_KPI data and update
+                        all graphs.
+                    </p>
+
+                </div>
+
+
+                <label
+                    for="dgrInput"
+                    class="upload-button secondary">
+
+                    Choose DGR
+
+                </label>
+
+            </div>
+
+
+
+            <!-- DROPZONE -->
+
+            <div
+                id="dropzone"
+                class="dropzone">
+
+                <div class="drop-icon">
+                    ↑
+                </div>
+
+                <strong>
+                    Drop your DGR file here
+                </strong>
+
+                <span>
+                    or click to select an
+                    Excel / CSV file
+                </span>
+
+                <small>
+                    Supported formats:
+                    .xlsx, .xls, .csv
+                </small>
+
+            </div>
+
+
+
+            <!-- FILE MAPPING INFORMATION -->
+
+            <div
+                id="mappingInfo"
+                class="mapping-info">
+
+                Upload a DGR to see the detected
+                data mapping.
+
+            </div>
+
+        </section>
+
+
+
+        <!-- =================================================
+             FOOTER
+        ================================================== -->
+
+        <footer class="footer">
+
+            <span>
+                SRI1PL Solar DGR Analytics
+            </span>
+
+            <span>
+                Interactive Performance Monitoring
+            </span>
+
+        </footer>
+
+
+    </main>
+
+</div>
+
+
+<!-- =========================================================
+     APPLICATION JAVASCRIPT
+     ========================================================== -->
+
+<script src="app.js"></script>
+
+
+</body>
+
+</html>
