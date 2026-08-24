@@ -2,7 +2,6 @@
 <html lang="en">
 
 <head>
-
     <meta charset="UTF-8">
 
     <meta
@@ -10,25 +9,20 @@
         content="width=device-width, initial-scale=1.0"
     >
 
-    <title>
-        Solar DGR Analytics
-    </title>
+    <title>Solar DGR Analytics</title>
 
     <!-- Chart.js -->
-    <script
-        src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js">
-    </script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 
-    <!-- SheetJS -->
-    <script
-        src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js">
-    </script>
+    <!-- Chart.js Zoom -->
+    <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
 
-    <link
-        rel="stylesheet"
-        href="styles.css"
-    >
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.2.0/dist/chartjs-plugin-zoom.min.js"></script>
 
+    <!-- Excel Reader -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+    <link rel="stylesheet" href="styles.css">
 </head>
 
 
@@ -41,84 +35,78 @@
 
 <aside class="sidebar">
 
-    <div class="logo">
+    <div class="brand">
 
-        <div class="logo-box">
+        <div class="brand-logo">
             S
         </div>
 
         <div>
-
-            <div class="logo-title">
+            <div class="brand-name">
                 Solar Analytics
             </div>
 
-            <div class="logo-subtitle">
+            <div class="brand-subtitle">
                 DGR Monitoring
             </div>
-
         </div>
 
     </div>
 
 
-    <nav>
+    <nav class="navigation">
 
         <button
-            class="nav-button active"
-            data-section="dashboard"
+            class="nav-item active"
+            data-target="dashboard"
         >
             Dashboard
         </button>
 
-
         <button
-            class="nav-button"
-            data-section="upload"
+            class="nav-item"
+            data-target="pa-section"
         >
-            Upload DGR
+            Plant Availability
         </button>
 
-
         <button
-            class="nav-button"
-            data-section="performance"
+            class="nav-item"
+            data-target="performance-section"
         >
             Performance
         </button>
 
-
         <button
-            class="nav-button"
-            data-section="irradiance"
+            class="nav-item"
+            data-target="curtailment-section"
         >
-            Irradiance
+            Curtailment
         </button>
 
-
         <button
-            class="nav-button"
-            data-section="generation"
+            class="nav-item"
+            data-target="energy-section"
         >
-            Generation
+            Energy
         </button>
 
     </nav>
 
 
-    <div class="sidebar-bottom">
-
-        <div class="plant-label">
-            SOLAR POWER PLANT
-        </div>
-
-        <strong>
-            DGR Analytics
-        </strong>
+    <div class="sidebar-footer">
 
         <span>
-            Interactive monitoring system
+            DGR ANALYTICS
         </span>
+
+        <strong>
+            Solar Power Plant
+        </strong>
+
+        <small>
+            Interactive monitoring
+        </small>
 
     </div>
 
@@ -127,928 +115,831 @@
 
 
 <!-- =====================================================
-     MAIN
+     MAIN CONTENT
 ===================================================== -->
 
-<main class="main">
+<main class="main-content">
 
 
-    <!-- =================================================
-         HEADER
-    ================================================= -->
+<!-- =====================================================
+     HEADER
+===================================================== -->
 
-    <header class="header">
+<header class="top-header">
 
-        <div>
+    <div>
 
-            <div class="small-title">
-                DAILY GENERATION REPORT
-            </div>
-
-            <h1>
-                Solar Plant Analytics
-            </h1>
-
-            <p id="statusText">
-                Upload a DGR to begin.
-            </p>
-
+        <div class="eyebrow">
+            DAILY GENERATION REPORT
         </div>
 
+        <h1>
+            Solar Plant Analytics
+        </h1>
+
+        <p id="statusMessage">
+            Upload your DGR to begin analysis.
+        </p>
+
+    </div>
+
+
+    <div class="header-actions">
 
         <label
-            for="excelFile"
-            class="upload-top-button"
+            for="dgrUpload"
+            class="upload-button"
         >
-
-            <span>
-                ↑
-            </span>
-
-            Upload DGR
-
+            ↑ Upload DGR
         </label>
 
         <input
             type="file"
-            id="excelFile"
+            id="dgrUpload"
             accept=".xlsx,.xls,.csv"
             hidden
         >
 
-    </header>
+    </div>
+
+</header>
 
 
 
-    <!-- =================================================
-         UPLOAD / COLUMN MAPPING
-    ================================================= -->
+<!-- =====================================================
+     UPLOAD PANEL
+===================================================== -->
 
-    <section
-        id="upload"
-        class="page-section"
+<section
+    id="upload-section"
+    class="upload-section"
+>
+
+    <div
+        id="dropZone"
+        class="drop-zone"
     >
 
-        <div class="section-heading">
+        <div class="upload-circle">
+            ↑
+        </div>
 
-            <div>
+        <h2>
+            Upload Daily Generation Report
+        </h2>
 
-                <div class="small-title">
-                    DATA INPUT
-                </div>
+        <p>
+            Drag and drop your DGR Excel file here
+        </p>
 
-                <h2>
-                    Upload Daily Generation Report
-                </h2>
+        <span>
+            or click to browse
+        </span>
 
-                <p>
-                    Upload your Excel DGR and select the
-                    required columns for analysis.
-                </p>
+        <small>
+            .xlsx / .xls / .csv
+        </small>
 
+    </div>
+
+
+    <div
+        id="fileInfo"
+        class="file-info hidden"
+    >
+
+        <div>
+
+            <strong id="fileName">
+                —
+            </strong>
+
+            <span id="fileDetails">
+                —
+            </span>
+
+        </div>
+
+        <button
+            id="removeFile"
+            class="remove-button"
+        >
+            Remove
+        </button>
+
+    </div>
+
+</section>
+
+
+
+<!-- =====================================================
+     DASHBOARD
+===================================================== -->
+
+<section
+    id="dashboard"
+    class="dashboard-section"
+>
+
+
+    <div class="section-title">
+
+        <div>
+
+            <div class="eyebrow">
+                OVERVIEW
             </div>
+
+            <h2>
+                Plant Performance Dashboard
+            </h2>
 
         </div>
 
 
-        <!-- DROPZONE -->
+        <div class="data-source">
 
-        <div
-            id="dropZone"
-            class="drop-zone"
-        >
+            <span class="status-dot"></span>
 
-            <div class="upload-icon">
-                ↑
-            </div>
-
-            <h3>
-                Upload DGR Excel File
-            </h3>
-
-            <p>
-                Drag and drop your file here
-            </p>
-
-            <span>
-                or click to browse
+            <span id="dataStatus">
+                No DGR loaded
             </span>
 
+        </div>
+
+    </div>
+
+
+
+    <!-- =================================================
+         KPI CARDS
+    ================================================= -->
+
+    <div class="kpi-grid">
+
+
+        <div class="kpi-card">
+
+            <span>
+                PLANT AVAILABILITY
+            </span>
+
+            <strong id="dashboardPA">
+                —
+            </strong>
+
             <small>
-                Supported: .xlsx, .xls, .csv
+                From PA worksheet
             </small>
 
         </div>
 
 
-        <!-- FILE INFORMATION -->
+        <div class="kpi-card">
 
-        <div
-            id="fileInformation"
-            class="file-information hidden"
-        >
+            <span>
+                PERFORMANCE RATIO
+            </span>
+
+            <strong id="dashboardPR">
+                —
+            </strong>
+
+            <small>
+                Daily_KPI — Column V
+            </small>
+
+        </div>
+
+
+        <div class="kpi-card">
+
+            <span>
+                OPERATING HOURS
+            </span>
+
+            <strong id="dashboardOperating">
+                —
+            </strong>
+
+            <small>
+                Daily_KPI — Column I
+            </small>
+
+        </div>
+
+
+        <div class="kpi-card">
+
+            <span>
+                SYSTEM LOSSES
+            </span>
+
+            <strong id="dashboardLoss">
+                —
+            </strong>
+
+            <small>
+                Daily_KPI — Column AD
+            </small>
+
+        </div>
+
+
+        <div class="kpi-card">
+
+            <span>
+                CURTAILMENT LOSS
+            </span>
+
+            <strong id="dashboardCurtailment">
+                —
+            </strong>
+
+            <small>
+                Curtailment records
+            </small>
+
+        </div>
+
+
+        <div class="kpi-card">
+
+            <span>
+                MEASURED ENERGY
+            </span>
+
+            <strong id="dashboardMeasured">
+                —
+            </strong>
+
+            <small>
+                Annual_KPI
+            </small>
+
+        </div>
+
+    </div>
+
+
+
+    <!-- =================================================
+         QUICK NAVIGATION
+    ================================================= -->
+
+    <div class="quick-navigation">
+
+        <button data-target="pa-section">
+            PA Analysis
+        </button>
+
+        <button data-target="curtailment-section">
+            Curtailment
+        </button>
+
+        <button data-target="performance-section">
+            Daily Performance
+        </button>
+
+        <button data-target="energy-section">
+            Energy Analysis
+        </button>
+
+    </div>
+
+</section>
+
+
+
+<!-- =====================================================
+     PA SECTION
+===================================================== -->
+
+<section
+    id="pa-section"
+    class="analytics-section"
+>
+
+    <div class="section-title">
+
+        <div>
+
+            <div class="eyebrow">
+                PLANT AVAILABILITY
+            </div>
+
+            <h2>
+                Breakdown Timeline
+            </h2>
+
+            <p>
+                Breakdown start time, end time and duration
+                from the PA worksheet.
+            </p>
+
+        </div>
+
+    </div>
+
+
+    <div class="chart-card full-width">
+
+        <div class="chart-header">
 
             <div>
 
-                <strong id="fileName">
-                    —
-                </strong>
+                <h3>
+                    Plant Availability / Breakdown Timeline
+                </h3>
 
-                <span id="recordCount">
-                    —
+                <span>
+                    PA WORKSHEET
                 </span>
 
             </div>
 
+
             <button
-                id="removeFile"
-                class="secondary-button"
+                class="reset-chart"
+                data-chart="paChart"
             >
-                Remove
+                Reset Zoom
             </button>
 
         </div>
 
 
-        <!-- SHEET SELECTION -->
+        <div class="timeline-container">
 
-        <div
-            id="sheetContainer"
-            class="mapping-card hidden"
-        >
+            <canvas id="paChart"></canvas>
 
-            <h3>
-                1. Select DGR Sheet
-            </h3>
+        </div>
 
-            <select
-                id="sheetSelect"
+    </div>
+
+</section>
+
+
+
+<!-- =====================================================
+     CURTAILMENT SECTION
+===================================================== -->
+
+<section
+    id="curtailment-section"
+    class="analytics-section"
+>
+
+    <div class="section-title">
+
+        <div>
+
+            <div class="eyebrow">
+                GRID CURTAILMENT
+            </div>
+
+            <h2>
+                Curtailment Losses
+            </h2>
+
+            <p>
+                Curtailment loss trend from the
+                Curtailment records worksheet.
+            </p>
+
+        </div>
+
+    </div>
+
+
+    <div class="chart-card full-width">
+
+        <div class="chart-header">
+
+            <div>
+
+                <h3>
+                    Curtailment Loss Trend
+                </h3>
+
+                <span>
+                    CURTAILMENT RECORDS
+                </span>
+
+            </div>
+
+
+            <button
+                class="reset-chart"
+                data-chart="curtailmentChart"
             >
-            </select>
+                Reset Zoom
+            </button>
 
         </div>
 
 
-        <!-- COLUMN MAPPING -->
+        <div class="chart-container large">
 
-        <div
-            id="mappingContainer"
-            class="mapping-card hidden"
-        >
+            <canvas
+                id="curtailmentChart"
+            ></canvas>
 
-            <div class="mapping-header">
+        </div>
+
+    </div>
+
+</section>
+
+
+
+<!-- =====================================================
+     PERFORMANCE SECTION
+===================================================== -->
+
+<section
+    id="performance-section"
+    class="analytics-section"
+>
+
+    <div class="section-title">
+
+        <div>
+
+            <div class="eyebrow">
+                DAILY KPI
+            </div>
+
+            <h2>
+                Performance Analysis
+            </h2>
+
+            <p>
+                Performance Ratio, Operating Hours and
+                System Losses from Daily_KPI.
+            </p>
+
+        </div>
+
+    </div>
+
+
+    <div class="chart-grid">
+
+
+        <!-- =============================================
+             PR SCATTER
+        ============================================== -->
+
+        <div class="chart-card">
+
+            <div class="chart-header">
 
                 <div>
 
                     <h3>
-                        2. Map DGR Columns
+                        Performance Ratio
                     </h3>
 
-                    <p>
-                        Select the column containing each metric.
-                    </p>
-
-                </div>
-
-            </div>
-
-
-            <div class="mapping-grid">
-
-
-                <!-- DATE -->
-
-                <div class="mapping-field">
-
-                    <label>
-                        Date
-                    </label>
-
-                    <select id="dateColumn">
-                    </select>
+                    <span>
+                        DAILY_KPI — COLUMN V
+                    </span>
 
                 </div>
 
 
-                <!-- PA -->
-
-                <div class="mapping-field">
-
-                    <label>
-                        Plant Availability
-                    </label>
-
-                    <select id="paColumn">
-                    </select>
-
-                </div>
-
-
-                <!-- PR -->
-
-                <div class="mapping-field">
-
-                    <label>
-                        Performance Ratio
-                    </label>
-
-                    <select id="prColumn">
-                    </select>
-
-                </div>
-
-
-                <!-- AEY -->
-
-                <div class="mapping-field">
-
-                    <label>
-                        Annual Energy Yield
-                    </label>
-
-                    <select id="aeyColumn">
-                    </select>
-
-                </div>
-
-
-                <!-- GHI -->
-
-                <div class="mapping-field">
-
-                    <label>
-                        GHI
-                    </label>
-
-                    <select id="ghiColumn">
-                    </select>
-
-                </div>
-
-
-                <!-- GII -->
-
-                <div class="mapping-field">
-
-                    <label>
-                        GII / POA
-                    </label>
-
-                    <select id="giiColumn">
-                    </select>
-
-                </div>
-
-
-                <!-- MEASURED -->
-
-                <div class="mapping-field">
-
-                    <label>
-                        Measured Generation
-                    </label>
-
-                    <select id="measuredColumn">
-                    </select>
-
-                </div>
-
-
-                <!-- ACTUAL -->
-
-                <div class="mapping-field">
-
-                    <label>
-                        Actual Generation
-                    </label>
-
-                    <select id="actualColumn">
-                    </select>
-
-                </div>
-
-            </div>
-
-
-            <button
-                id="generateButton"
-                class="generate-button"
-            >
-
-                Generate Dashboard
-
-            </button>
-
-        </div>
-
-    </section>
-
-
-
-    <!-- =================================================
-         DASHBOARD
-    ================================================= -->
-
-    <section
-        id="dashboard"
-        class="page-section"
-    >
-
-        <div class="section-heading">
-
-            <div>
-
-                <div class="small-title">
-                    PLANT OVERVIEW
-                </div>
-
-                <h2>
-                    Performance Dashboard
-                </h2>
-
-            </div>
-
-        </div>
-
-
-        <!-- KPI CARDS -->
-
-        <div class="kpi-grid">
-
-
-            <div class="kpi-card">
-
-                <span>
-                    PLANT AVAILABILITY
-                </span>
-
-                <strong id="paValue">
-                    —
-                </strong>
-
-                <small>
-                    Latest value
-                </small>
-
-            </div>
-
-
-            <div class="kpi-card">
-
-                <span>
-                    PERFORMANCE RATIO
-                </span>
-
-                <strong id="prValue">
-                    —
-                </strong>
-
-                <small>
-                    Latest value
-                </small>
-
-            </div>
-
-
-            <div class="kpi-card">
-
-                <span>
-                    ANNUAL ENERGY YIELD
-                </span>
-
-                <strong id="aeyValue">
-                    —
-                </strong>
-
-                <small>
-                    kWh/kWp
-                </small>
-
-            </div>
-
-
-            <div class="kpi-card">
-
-                <span>
-                    ACTUAL GENERATION
-                </span>
-
-                <strong id="generationValue">
-                    —
-                </strong>
-
-                <small>
-                    Latest generation
-                </small>
-
-            </div>
-
-        </div>
-
-
-        <!-- DATE FILTER -->
-
-        <div class="filter-bar">
-
-            <div>
-
-                <label>
-                    From
-                </label>
-
-                <input
-                    type="date"
-                    id="fromDate"
+                <button
+                    class="reset-chart"
+                    data-chart="prChart"
                 >
+                    Reset
+                </button>
 
             </div>
 
 
-            <div>
+            <div class="chart-container">
 
-                <label>
-                    To
-                </label>
+                <canvas
+                    id="prChart"
+                ></canvas>
 
-                <input
-                    type="date"
-                    id="toDate"
+            </div>
+
+        </div>
+
+
+
+        <!-- =============================================
+             OPERATING HOURS
+        ============================================== -->
+
+        <div class="chart-card">
+
+            <div class="chart-header">
+
+                <div>
+
+                    <h3>
+                        Operating Hours
+                    </h3>
+
+                    <span>
+                        DAILY_KPI — COLUMN I
+                    </span>
+
+                </div>
+
+
+                <button
+                    class="reset-chart"
+                    data-chart="operatingChart"
                 >
+                    Reset
+                </button>
+
+            </div>
+
+
+            <div class="chart-container">
+
+                <canvas
+                    id="operatingChart"
+                ></canvas>
+
+            </div>
+
+        </div>
+
+
+
+        <!-- =============================================
+             SYSTEM LOSSES
+        ============================================== -->
+
+        <div class="chart-card full-width">
+
+            <div class="chart-header">
+
+                <div>
+
+                    <h3>
+                        System Losses (%)
+                    </h3>
+
+                    <span>
+                        DAILY_KPI — COLUMN AD
+                    </span>
+
+                </div>
+
+
+                <button
+                    class="reset-chart"
+                    data-chart="systemLossChart"
+                >
+                    Reset
+                </button>
+
+            </div>
+
+
+            <div class="chart-container large">
+
+                <canvas
+                    id="systemLossChart"
+                ></canvas>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</section>
+
+
+
+<!-- =====================================================
+     ENERGY SECTION
+===================================================== -->
+
+<section
+    id="energy-section"
+    class="analytics-section"
+>
+
+    <div class="section-title">
+
+        <div>
+
+            <div class="eyebrow">
+                ANNUAL KPI
+            </div>
+
+            <h2>
+                Budgeted vs Measured Energy
+            </h2>
+
+            <p>
+                Budgeted Energy from E10:E21 and Measured
+                Energy from F10:F21.
+            </p>
+
+        </div>
+
+    </div>
+
+
+    <!-- ENERGY SUMMARY -->
+
+    <div class="energy-summary">
+
+
+        <div class="summary-card">
+
+            <span>
+                TOTAL BUDGETED ENERGY
+            </span>
+
+            <strong id="totalBudget">
+                —
+            </strong>
+
+            <small>
+                GWh
+            </small>
+
+        </div>
+
+
+        <div class="summary-card">
+
+            <span>
+                TOTAL MEASURED ENERGY
+            </span>
+
+            <strong id="totalMeasured">
+                —
+            </strong>
+
+            <small>
+                MWh / GWh
+            </small>
+
+        </div>
+
+
+        <div class="summary-card">
+
+            <span>
+                ENERGY VARIANCE
+            </span>
+
+            <strong id="energyVariance">
+                —
+            </strong>
+
+            <small>
+                Budget vs measured
+            </small>
+
+        </div>
+
+    </div>
+
+
+
+    <!-- DOUBLE BAR -->
+
+    <div class="chart-card full-width">
+
+        <div class="chart-header">
+
+            <div>
+
+                <h3>
+                    Budgeted Energy vs Measured Energy
+                </h3>
+
+                <span>
+                    ANNUAL_KPI — E10:E21 / F10:F21
+                </span>
 
             </div>
 
 
             <button
-                id="filterButton"
-                class="filter-button"
+                class="reset-chart"
+                data-chart="energyChart"
             >
-                Apply
-            </button>
-
-
-            <button
-                id="resetButton"
-                class="reset-button"
-            >
-                Reset
+                Reset Zoom
             </button>
 
         </div>
 
-    </section>
 
+        <div class="chart-container energy-chart">
 
-
-    <!-- =================================================
-         PERFORMANCE SECTION
-    ================================================= -->
-
-    <section
-        id="performance"
-        class="page-section"
-    >
-
-        <div class="section-heading">
-
-            <div>
-
-                <div class="small-title">
-                    PERFORMANCE
-                </div>
-
-                <h2>
-                    Plant Performance
-                </h2>
-
-            </div>
+            <canvas
+                id="energyChart"
+            ></canvas>
 
         </div>
 
+    </div>
 
-        <div class="chart-grid">
+</section>
 
 
-            <!-- PA LINE -->
 
-            <div class="chart-card">
+<!-- =====================================================
+     DATA PREVIEW
+===================================================== -->
 
-                <div class="chart-header">
+<section
+    id="data-preview"
+    class="data-preview-section hidden"
+>
 
-                    <h3>
-                        Plant Availability
-                    </h3>
+    <div class="section-title">
 
-                    <span>
-                        LINE
-                    </span>
+        <div>
 
-                </div>
-
-                <div class="chart-box">
-
-                    <canvas
-                        id="paLineChart"
-                    ></canvas>
-
-                </div>
-
+            <div class="eyebrow">
+                DATA
             </div>
 
-
-            <!-- PA BAR -->
-
-            <div class="chart-card">
-
-                <div class="chart-header">
-
-                    <h3>
-                        Plant Availability
-                    </h3>
-
-                    <span>
-                        BAR
-                    </span>
-
-                </div>
-
-                <div class="chart-box">
-
-                    <canvas
-                        id="paBarChart"
-                    ></canvas>
-
-                </div>
-
-            </div>
-
-
-            <!-- PR LINE -->
-
-            <div class="chart-card">
-
-                <div class="chart-header">
-
-                    <h3>
-                        Performance Ratio
-                    </h3>
-
-                    <span>
-                        LINE
-                    </span>
-
-                </div>
-
-                <div class="chart-box">
-
-                    <canvas
-                        id="prLineChart"
-                    ></canvas>
-
-                </div>
-
-            </div>
-
-
-            <!-- PR BAR -->
-
-            <div class="chart-card">
-
-                <div class="chart-header">
-
-                    <h3>
-                        Performance Ratio
-                    </h3>
-
-                    <span>
-                        BAR
-                    </span>
-
-                </div>
-
-                <div class="chart-box">
-
-                    <canvas
-                        id="prBarChart"
-                    ></canvas>
-
-                </div>
-
-            </div>
-
-
-            <!-- AEY -->
-
-            <div class="chart-card full-width">
-
-                <div class="chart-header">
-
-                    <h3>
-                        Annual Energy Yield
-                    </h3>
-
-                    <span>
-                        LINE
-                    </span>
-
-                </div>
-
-                <div class="chart-box large">
-
-                    <canvas
-                        id="aeyChart"
-                    ></canvas>
-
-                </div>
-
-            </div>
+            <h2>
+                Loaded DGR Information
+            </h2>
 
         </div>
 
-    </section>
+    </div>
 
 
+    <div class="sheet-status-grid">
 
-    <!-- =================================================
-         IRRADIANCE SECTION
-    ================================================= -->
-
-    <section
-        id="irradiance"
-        class="page-section"
-    >
-
-        <div class="section-heading">
-
-            <div>
-
-                <div class="small-title">
-                    SOLAR RESOURCE
-                </div>
-
-                <h2>
-                    Irradiance Analysis
-                </h2>
-
-            </div>
-
+        <div class="sheet-status-card">
+            <strong>Dashboard</strong>
+            <span id="dashboardSheetStatus">Not loaded</span>
         </div>
 
-
-        <div class="chart-grid">
-
-
-            <!-- GHI BAR -->
-
-            <div class="chart-card">
-
-                <div class="chart-header">
-
-                    <h3>
-                        GHI
-                    </h3>
-
-                    <span>
-                        BAR
-                    </span>
-
-                </div>
-
-                <div class="chart-box">
-
-                    <canvas
-                        id="ghiBarChart"
-                    ></canvas>
-
-                </div>
-
-            </div>
-
-
-            <!-- GHI LINE -->
-
-            <div class="chart-card">
-
-                <div class="chart-header">
-
-                    <h3>
-                        GHI Trend
-                    </h3>
-
-                    <span>
-                        LINE
-                    </span>
-
-                </div>
-
-                <div class="chart-box">
-
-                    <canvas
-                        id="ghiLineChart"
-                    ></canvas>
-
-                </div>
-
-            </div>
-
-
-            <!-- GII -->
-
-            <div class="chart-card full-width">
-
-                <div class="chart-header">
-
-                    <h3>
-                        GII / POA
-                    </h3>
-
-                    <span>
-                        LINE
-                    </span>
-
-                </div>
-
-                <div class="chart-box large">
-
-                    <canvas
-                        id="giiChart"
-                    ></canvas>
-
-                </div>
-
-            </div>
-
-
-            <!-- SCATTER -->
-
-            <div class="chart-card full-width">
-
-                <div class="chart-header">
-
-                    <h3>
-                        Irradiance vs Generation
-                    </h3>
-
-                    <span>
-                        SCATTER
-                    </span>
-
-                </div>
-
-                <div class="chart-box large">
-
-                    <canvas
-                        id="scatterChart"
-                    ></canvas>
-
-                </div>
-
-            </div>
-
+        <div class="sheet-status-card">
+            <strong>Annual_KPI</strong>
+            <span id="annualSheetStatus">Not loaded</span>
         </div>
 
-    </section>
-
-
-
-    <!-- =================================================
-         GENERATION SECTION
-    ================================================= -->
-
-    <section
-        id="generation"
-        class="page-section"
-    >
-
-        <div class="section-heading">
-
-            <div>
-
-                <div class="small-title">
-                    ENERGY
-                </div>
-
-                <h2>
-                    Generation Analysis
-                </h2>
-
-            </div>
-
+        <div class="sheet-status-card">
+            <strong>Daily_KPI</strong>
+            <span id="dailySheetStatus">Not loaded</span>
         </div>
 
-
-        <div class="chart-grid">
-
-
-            <!-- GENERATION LINE -->
-
-            <div class="chart-card full-width">
-
-                <div class="chart-header">
-
-                    <h3>
-                        Measured vs Actual Generation
-                    </h3>
-
-                    <span>
-                        LINE
-                    </span>
-
-                </div>
-
-                <div class="chart-box large">
-
-                    <canvas
-                        id="generationLineChart"
-                    ></canvas>
-
-                </div>
-
-            </div>
-
-
-            <!-- GENERATION BAR -->
-
-            <div class="chart-card">
-
-                <div class="chart-header">
-
-                    <h3>
-                        Generation Comparison
-                    </h3>
-
-                    <span>
-                        BAR
-                    </span>
-
-                </div>
-
-                <div class="chart-box">
-
-                    <canvas
-                        id="generationBarChart"
-                    ></canvas>
-
-                </div>
-
-            </div>
-
-
-            <!-- PIE -->
-
-            <div class="chart-card">
-
-                <div class="chart-header">
-
-                    <h3>
-                        Generation Distribution
-                    </h3>
-
-                    <span>
-                        PIE
-                    </span>
-
-                </div>
-
-                <div class="chart-box">
-
-                    <canvas
-                        id="generationPieChart"
-                    ></canvas>
-
-                </div>
-
-            </div>
-
+        <div class="sheet-status-card">
+            <strong>PA</strong>
+            <span id="paSheetStatus">Not loaded</span>
         </div>
 
-    </section>
+        <div class="sheet-status-card">
+            <strong>Curtailment records</strong>
+            <span id="curtailmentSheetStatus">Not loaded</span>
+        </div>
+
+    </div>
+
+</section>
 
 
 
-    <!-- =================================================
-         FOOTER
-    ================================================= -->
+<!-- =====================================================
+     FOOTER
+===================================================== -->
 
-    <footer>
+<footer>
 
-        <span>
-            Solar DGR Analytics
-        </span>
+    <span>
+        Solar DGR Analytics
+    </span>
 
-        <span>
-            Interactive Plant Monitoring
-        </span>
+    <span>
+        Only Dashboard • Annual_KPI • Daily_KPI • PA •
+        Curtailment records are used
+    </span>
 
-    </footer>
+</footer>
 
 
 </main>
 
 
-<script
-    src="app.js"
-></script>
 
+<!-- =====================================================
+     JAVASCRIPT
+===================================================== -->
+
+<script src="app.js"></script>
 
 </body>
 
