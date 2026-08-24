@@ -1,189 +1,175 @@
 /* =========================================================
-   SRI1PL SOLAR DGR DASHBOARD
-   APPLICATION JAVASCRIPT
+   SRI1PL SOLAR DGR ANALYTICS
+   COMPLETE DASHBOARD ENGINE
    ========================================================= */
 
 
 /* =========================================================
-   GLOBAL VARIABLES
+   GLOBAL STATE
    ========================================================= */
 
-let rows = [];
+let allData = [];
+let filteredData = [];
 
-let filteredRows = [];
-
-const charts = {};
+const chartInstances = {};
 
 
 /* =========================================================
-   DGR COLUMN MAPPING
-   Based on the uploaded SRI1PL DGR
+   DOM HELPER
    ========================================================= */
 
-const FIELD = {
-
-    date:
-        "Date",
-
-    plantAvailability:
-        "PA(%)",
-
-    performanceRatio:
-        "PR(%)",
-
-    ghi:
-        "GHI-UP (KWh/m2)",
-
-    poaUp:
-        "POA-UP(KWh/m2)",
-
-    poaDown:
-        "POA-Down(KWh/m2)",
-
-    measuredGeneration:
-        "Inv_Exp (kWh)",
-
-    actualGeneration:
-        "220kV_Net_Exp (KWh)",
-
-    dcCapacity:
-        "Firm DC Capacity (MWp)"
-
-};
-
-
-/* =========================================================
-   SHORTCUT FOR HTML ELEMENTS
-   ========================================================= */
-
-function $(id) {
-
+function el(id) {
     return document.getElementById(id);
-
 }
 
 
 /* =========================================================
-   NUMBER FORMATTER
+   SAFE NUMBER
    ========================================================= */
 
-function formatNumber(value, decimals = 2) {
+function num(value) {
 
-    if (!Number.isFinite(value)) {
-
-        return "—";
-
+    if (
+        value === null ||
+        value === undefined ||
+        value === ""
+    ) {
+        return null;
     }
 
-    return value.toLocaleString(
-        "en-IN",
-        {
-            minimumFractionDigits: decimals,
-            maximumFractionDigits: decimals
-        }
-    );
-
-}
-
-
-/* =========================================================
-   PERCENTAGE FORMATTER
-   ========================================================= */
-
-function formatPercentage(value) {
-
-    if (!Number.isFinite(value)) {
-
-        return "—";
-
+    if (typeof value === "number") {
+        return Number.isFinite(value)
+            ? value
+            : null;
     }
 
-    return (
-        value * 100
-    ).toLocaleString(
-        "en-IN",
-        {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2
-        }
-    ) + "%";
+    let text = String(value)
+        .trim()
+        .replace(/,/g, "")
+        .replace(/%/g, "");
 
+    if (!text) {
+        return null;
+    }
+
+    const result = parseFloat(text);
+
+    return Number.isFinite(result)
+        ? result
+        : null;
 }
 
 
 /* =========================================================
-   DATE CONVERSION
+   DATE PARSER
    ========================================================= */
 
-function convertToDate(value) {
+function parseDate(value) {
 
     if (value instanceof Date) {
 
-        return value;
+        return isNaN(value.getTime())
+            ? null
+            : value;
 
     }
-
-
-    /*
-       Excel serial date
-    */
 
     if (typeof value === "number") {
 
         try {
 
-            const parsed =
+            const d =
                 XLSX.SSF.parse_date_code(value);
 
+            if (!d) {
+                return null;
+            }
+
             return new Date(
-                parsed.y,
-                parsed.m - 1,
-                parsed.d
+                d.y,
+                d.m - 1,
+                d.d
             );
 
-        }
-
-        catch (error) {
+        } catch {
 
             return null;
 
         }
+    }
+
+
+    if (typeof value === "string") {
+
+        let text =
+            value.trim();
+
+
+        /*
+         * DD/MM/YYYY
+         */
+
+        const slash =
+            text.match(
+                /^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})/
+            );
+
+
+        if (slash) {
+
+            const day =
+                parseInt(slash[1]);
+
+            const month =
+                parseInt(slash[2]);
+
+            const year =
+                parseInt(slash[3]);
+
+
+            const date =
+                new Date(
+                    year,
+                    month - 1,
+                    day
+                );
+
+
+            return isNaN(
+                date.getTime()
+            )
+                ? null
+                : date;
+
+        }
+
+
+        const parsed =
+            new Date(text);
+
+
+        return isNaN(
+            parsed.getTime()
+        )
+            ? null
+            : parsed;
 
     }
 
 
-    /*
-       Normal date string
-    */
-
-    const date =
-        new Date(value);
-
-
-    if (isNaN(date.getTime())) {
-
-        return null;
-
-    }
-
-
-    return date;
-
+    return null;
 }
 
 
 /* =========================================================
-   ISO DATE
+   DATE FORMATTING
    ========================================================= */
 
-function getISODate(date) {
+function isoDate(date) {
 
     if (!date) {
-
         return "";
-
     }
-
 
     const year =
         date.getFullYear();
@@ -198,24 +184,15 @@ function getISODate(date) {
             date.getDate()
         ).padStart(2, "0");
 
-
     return `${year}-${month}-${day}`;
-
 }
 
 
-/* =========================================================
-   DISPLAY DATE
-   ========================================================= */
-
-function displayDate(date) {
+function shortDate(date) {
 
     if (!date) {
-
         return "";
-
     }
-
 
     return date.toLocaleDateString(
         "en-IN",
@@ -224,1074 +201,241 @@ function displayDate(date) {
             month: "short"
         }
     );
-
 }
 
 
 /* =========================================================
-   NUMBER CLEANER
+   FIND COLUMN
    ========================================================= */
 
-function cleanNumber(value) {
+function findColumn(
+    headers,
+    candidates
+) {
 
-    if (
-        value === null ||
-        value === undefined ||
-        value === ""
+    const cleanHeaders =
+        headers.map(
+            h =>
+                String(h)
+                    .trim()
+                    .toLowerCase()
+        );
+
+
+    /*
+     * First look for exact matches.
+     */
+
+    for (
+        const candidate
+        of candidates
     ) {
 
-        return NaN;
-
-    }
-
-
-    if (typeof value === "number") {
-
-        return value;
-
-    }
-
-
-    const cleaned =
-        String(value)
-            .replace(/,/g, "")
-            .replace(/%/g, "")
-            .trim();
-
-
-    const number =
-        parseFloat(cleaned);
-
-
-    if (
-        Number.isFinite(number)
-    ) {
-
-        return number;
-
-    }
-
-
-    return NaN;
-
-}
-
-
-/* =========================================================
-   NORMALISE DGR DATA
-   ========================================================= */
-
-function normaliseData(rawData) {
-
-    const normalised = [];
-
-
-    rawData.forEach(row => {
-
-        const date =
-            convertToDate(
-                row[FIELD.date]
+        const index =
+            cleanHeaders.indexOf(
+                candidate.toLowerCase()
             );
 
 
-        /*
-           Ignore rows without valid dates.
-        */
+        if (index !== -1) {
 
-        if (!date) {
-
-            return;
+            return headers[index];
 
         }
 
+    }
 
-        const capacity =
-            cleanNumber(
-                row[FIELD.dcCapacity]
+
+    /*
+     * Then look for partial matches.
+     */
+
+    for (
+        const candidate
+        of candidates
+    ) {
+
+        const search =
+            candidate
+                .toLowerCase()
+                .replace(/\s/g, "");
+
+
+        const index =
+            cleanHeaders.findIndex(
+                header =>
+                    header
+                        .replace(/\s/g, "")
+                        .includes(search)
             );
 
 
-        normalised.push({
+        if (index !== -1) {
 
-            date: date,
+            return headers[index];
 
-            pa:
-                cleanNumber(
-                    row[FIELD.plantAvailability]
-                ),
-
-            pr:
-                cleanNumber(
-                    row[FIELD.performanceRatio]
-                ),
-
-            ghi:
-                cleanNumber(
-                    row[FIELD.ghi]
-                ),
-
-            poaUp:
-                cleanNumber(
-                    row[FIELD.poaUp]
-                ),
-
-            poaDown:
-                cleanNumber(
-                    row[FIELD.poaDown]
-                ),
-
-            measured:
-                cleanNumber(
-                    row[FIELD.measuredGeneration]
-                ),
-
-            actual:
-                cleanNumber(
-                    row[FIELD.actualGeneration]
-                ),
-
-            capacity:
-                capacity
-
-        });
-
-    });
-
-
-    /*
-       Sort chronologically.
-    */
-
-    normalised.sort(
-        (a, b) =>
-            a.date - b.date
-    );
-
-
-    return normalised;
-
-}
-
-
-/* =========================================================
-   CREATE CHART
-   ========================================================= */
-
-function createChart(
-    chartId,
-    chartType,
-    labels,
-    datasets,
-    options = {}
-) {
-
-    /*
-       Destroy existing chart first.
-    */
-
-    if (charts[chartId]) {
-
-        charts[chartId].destroy();
+        }
 
     }
 
 
-    const canvas =
-        $(chartId);
-
-
-    if (!canvas) {
-
-        return;
-
-    }
-
-
-    charts[chartId] =
-        new Chart(
-            canvas,
-            {
-
-                type: chartType,
-
-                data: {
-
-                    labels: labels,
-
-                    datasets: datasets
-
-                },
-
-                options: {
-
-                    responsive: true,
-
-                    maintainAspectRatio: false,
-
-                    interaction: {
-
-                        mode: "index",
-
-                        intersect: false
-
-                    },
-
-                    plugins: {
-
-                        legend: {
-
-                            display: true,
-
-                            position: "top",
-
-                            labels: {
-
-                                usePointStyle: true,
-
-                                boxWidth: 7,
-
-                                padding: 16,
-
-                                font: {
-
-                                    size: 10
-
-                                }
-
-                            }
-
-                        },
-
-                        tooltip: {
-
-                            enabled: true,
-
-                            backgroundColor:
-                                "#17252A",
-
-                            titleColor:
-                                "#FFFFFF",
-
-                            bodyColor:
-                                "#FFFFFF",
-
-                            padding: 10,
-
-                            cornerRadius: 8
-
-                        }
-
-                    },
-
-                    scales: {
-
-                        x: {
-
-                            grid: {
-
-                                display: false
-
-                            },
-
-                            ticks: {
-
-                                font: {
-
-                                    size: 9
-
-                                },
-
-                                maxRotation: 0
-
-                            }
-
-                        },
-
-                        y: {
-
-                            beginAtZero: false,
-
-                            grid: {
-
-                                color:
-                                    "rgba(23,37,42,0.06)"
-
-                            },
-
-                            ticks: {
-
-                                font: {
-
-                                    size: 9
-
-                                }
-
-                            }
-
-                        }
-
-                    },
-
-                    ...options
-
-                }
-
-            }
-
-        );
-
+    return null;
 }
 
 
 /* =========================================================
-   DATASET BUILDER
+   DETECT COLUMNS
    ========================================================= */
 
-function lineDataset(
-    label,
-    data
-) {
+function detectColumns(headers) {
 
     return {
 
-        label: label,
+        date:
+            findColumn(
+                headers,
+                [
+                    "Date",
+                    "date"
+                ]
+            ),
 
-        data: data,
+        pa:
+            findColumn(
+                headers,
+                [
+                    "PA(%)",
+                    "PA (%)",
+                    "Plant Availability (%)",
+                    "Plant Availability",
+                    "PA"
+                ]
+            ),
 
-        borderWidth: 2,
+        pr:
+            findColumn(
+                headers,
+                [
+                    "PR(%)",
+                    "PR (%)",
+                    "Performance Ratio (%)",
+                    "Performance Ratio",
+                    "PR"
+                ]
+            ),
 
-        pointRadius: 2,
+        ghi:
+            findColumn(
+                headers,
+                [
+                    "GHI-UP (KWh/m2)",
+                    "GHI-UP(KWh/m2)",
+                    "GHI",
+                    "GHI-UP"
+                ]
+            ),
 
-        pointHoverRadius: 5,
+        poaUp:
+            findColumn(
+                headers,
+                [
+                    "POA-UP(KWh/m2)",
+                    "POA-UP (KWh/m2)",
+                    "POA-UP",
+                    "POA Up",
+                    "GII",
+                    "GII-UP"
+                ]
+            ),
 
-        tension: 0.3,
+        poaDown:
+            findColumn(
+                headers,
+                [
+                    "POA-Down(KWh/m2)",
+                    "POA-Down (KWh/m2)",
+                    "POA-Down",
+                    "POA Down"
+                ]
+            ),
 
-        fill: false
+        measured:
+            findColumn(
+                headers,
+                [
+                    "Inv_Exp (kWh)",
+                    "Inv_Exp(kWh)",
+                    "Inv Exp",
+                    "Inverter Export",
+                    "Measured Generation",
+                    "Measured Generation (kWh)"
+                ]
+            ),
+
+        actual:
+            findColumn(
+                headers,
+                [
+                    "220kV_Net_Exp (KWh)",
+                    "220kV_Net_Exp(KWh)",
+                    "220kV Net Export",
+                    "Actual Generation",
+                    "Actual Generation (kWh)",
+                    "Net Export"
+                ]
+            ),
+
+        capacity:
+            findColumn(
+                headers,
+                [
+                    "Firm DC Capacity (MWp)",
+                    "DC Capacity (MWp)",
+                    "Installed DC Capacity",
+                    "Capacity (MWp)"
+                ]
+            )
 
     };
-
 }
 
 
 /* =========================================================
-   GET FILTERED DATA
+   DETECT HEADER ROW
    ========================================================= */
 
-function getFilteredRows() {
-
-    if (!rows.length) {
-
-        return [];
-
-    }
-
-
-    const fromValue =
-        $("fromDate").value;
-
-
-    const toValue =
-        $("toDate").value;
-
-
-    /*
-       Custom date filter
-    */
-
-    if (
-        fromValue ||
-        toValue
-    ) {
-
-        const fromDate =
-            fromValue
-                ? new Date(
-                    fromValue +
-                    "T00:00:00"
-                )
-                : null;
-
-
-        const toDate =
-            toValue
-                ? new Date(
-                    toValue +
-                    "T23:59:59"
-                )
-                : null;
-
-
-        return rows.filter(row => {
-
-            return (
-
-                (!fromDate ||
-                    row.date >= fromDate)
-
-                &&
-
-                (!toDate ||
-                    row.date <= toDate)
-
-            );
-
-        });
-
-    }
-
-
-    /*
-       Preset ranges
-    */
-
-    const selectedButton =
-        document.querySelector(
-            ".range-button.selected"
-        );
-
-
-    const selectedRange =
-        selectedButton
-            ? selectedButton.dataset.range
-            : "30";
-
-
-    if (
-        selectedRange === "all"
-    ) {
-
-        return [...rows];
-
-    }
-
-
-    const numberOfDays =
-        Number(selectedRange);
-
-
-    return rows.slice(
-        -numberOfDays
-    );
-
-}
-
-
-/* =========================================================
-   CALCULATE AEY
-   =========================================================
-
-   AEY =
-   cumulative actual generation
-   /
-   installed DC capacity
-
-   Generation = kWh
-
-   Capacity = MWp
-
-   MWp × 1000 = kWp
-   ========================================================= */
-
-function calculateAEY(data) {
-
-    let cumulativeGeneration = 0;
-
-
-    return data.map(row => {
-
-        if (
-            Number.isFinite(
-                row.actual
-            )
-        ) {
-
-            cumulativeGeneration +=
-                row.actual;
-
-        }
-
-
-        const capacity =
-            row.capacity ||
-            data.find(
-                r =>
-                    Number.isFinite(
-                        r.capacity
-                    )
-            )?.capacity;
-
-
-        if (
-            !capacity ||
-            !Number.isFinite(capacity)
-        ) {
-
-            return NaN;
-
-        }
-
-
-        const capacityKWp =
-            capacity * 1000;
-
-
-        return (
-            cumulativeGeneration /
-            capacityKWp
-        );
-
-    });
-
-}
-
-
-/* =========================================================
-   RENDER DASHBOARD
-   ========================================================= */
-
-function renderDashboard() {
-
-    filteredRows =
-        getFilteredRows();
-
-
-    if (
-        !filteredRows.length
-    ) {
-
-        return;
-
-    }
-
-
-    /*
-       Labels
-    */
-
-    const labels =
-        filteredRows.map(
-            row =>
-                displayDate(
-                    row.date
-                )
-        );
-
-
-    /* =====================================================
-       PLANT AVAILABILITY
-    ====================================================== */
-
-    createChart(
-
-        "paChart",
-
-        "line",
-
-        labels,
-
-        [
-
-            lineDataset(
-                "Plant Availability (%)",
-
-                filteredRows.map(
-                    row =>
-                        Number.isFinite(row.pa)
-                            ? row.pa * 100
-                            : null
-                )
-
-            )
-
-        ],
-
-        {
-
-            scales: {
-
-                y: {
-
-                    min: 0,
-
-                    max: 100,
-
-                    title: {
-
-                        display: true,
-
-                        text: "Availability (%)"
-
-                    }
-
-                }
-
-            }
-
-        }
-
-    );
-
-
-    /* =====================================================
-       PERFORMANCE RATIO
-    ====================================================== */
-
-    createChart(
-
-        "prChart",
-
-        "line",
-
-        labels,
-
-        [
-
-            lineDataset(
-                "Performance Ratio (%)",
-
-                filteredRows.map(
-                    row =>
-                        Number.isFinite(row.pr)
-                            ? row.pr * 100
-                            : null
-                )
-
-            )
-
-        ],
-
-        {
-
-            scales: {
-
-                y: {
-
-                    beginAtZero: false,
-
-                    title: {
-
-                        display: true,
-
-                        text: "PR (%)"
-
-                    }
-
-                }
-
-            }
-
-        }
-
-    );
-
-
-    /* =====================================================
-       GHI
-    ====================================================== */
-
-    createChart(
-
-        "ghiChart",
-
-        "line",
-
-        labels,
-
-        [
-
-            lineDataset(
-                "GHI (kWh/m²)",
-
-                filteredRows.map(
-                    row =>
-                        Number.isFinite(row.ghi)
-                            ? row.ghi
-                            : null
-                )
-
-            )
-
-        ],
-
-        {
-
-            scales: {
-
-                y: {
-
-                    beginAtZero: true,
-
-                    title: {
-
-                        display: true,
-
-                        text: "kWh/m²"
-
-                    }
-
-                }
-
-            }
-
-        }
-
-    );
-
-
-    /* =====================================================
-       GII / POA
-    ====================================================== */
-
-    createChart(
-
-        "giiChart",
-
-        "line",
-
-        labels,
-
-        [
-
-            lineDataset(
-                "POA Up (kWh/m²)",
-
-                filteredRows.map(
-                    row =>
-                        Number.isFinite(row.poaUp)
-                            ? row.poaUp
-                            : null
-                )
-
-            ),
-
-            lineDataset(
-                "POA Down (kWh/m²)",
-
-                filteredRows.map(
-                    row =>
-                        Number.isFinite(row.poaDown)
-                            ? row.poaDown
-                            : null
-                )
-
-            )
-
-        ],
-
-        {
-
-            scales: {
-
-                y: {
-
-                    beginAtZero: true,
-
-                    title: {
-
-                        display: true,
-
-                        text: "kWh/m²"
-
-                    }
-
-                }
-
-            }
-
-        }
-
-    );
-
-
-    /* =====================================================
-       MEASURED VS ACTUAL GENERATION
-    ====================================================== */
-
-    createChart(
-
-        "generationChart",
-
-        "line",
-
-        labels,
-
-        [
-
-            lineDataset(
-                "Measured / Inverter Export",
-
-                filteredRows.map(
-                    row =>
-                        Number.isFinite(row.measured)
-                            ? row.measured
-                            : null
-                )
-
-            ),
-
-            lineDataset(
-                "Actual / 220 kV Net Export",
-
-                filteredRows.map(
-                    row =>
-                        Number.isFinite(row.actual)
-                            ? row.actual
-                            : null
-                )
-
-            )
-
-        ],
-
-        {
-
-            scales: {
-
-                y: {
-
-                    beginAtZero: true,
-
-                    title: {
-
-                        display: true,
-
-                        text: "Generation (kWh)"
-
-                    }
-
-                }
-
-            }
-
-        }
-
-    );
-
-
-    /* =====================================================
-       AEY
-    ====================================================== */
-
-    const aeyValues =
-        calculateAEY(
-            filteredRows
-        );
-
-
-    createChart(
-
-        "aeyChart",
-
-        "line",
-
-        labels,
-
-        [
-
-            lineDataset(
-                "Cumulative AEY (kWh/kWp)",
-
-                aeyValues
-
-            )
-
-        ],
-
-        {
-
-            scales: {
-
-                y: {
-
-                    beginAtZero: true,
-
-                    title: {
-
-                        display: true,
-
-                        text: "kWh/kWp"
-
-                    }
-
-                }
-
-            }
-
-        }
-
-    );
-
-
-    /* =====================================================
-       UPDATE KPI CARDS
-    ====================================================== */
-
-    updateKPIs(
-        filteredRows,
-        aeyValues
-    );
-
-
-    /* =====================================================
-       UPDATE DATA STATUS
-    ====================================================== */
-
-    const latest =
-        filteredRows[
-            filteredRows.length - 1
-        ];
-
-
-    $("dataStatus").textContent =
-
-        `${rows.length} DGR days loaded • ` +
-
-        `Showing ${filteredRows.length} days • ` +
-
-        `Latest: ${getISODate(latest.date)}`;
-
-}
-
-
-/* =========================================================
-   UPDATE KPI CARDS
-   ========================================================= */
-
-function updateKPIs(
-    data,
-    aeyValues
-) {
-
-    if (!data.length) {
-
-        return;
-
-    }
-
-
-    const latest =
-        data[data.length - 1];
-
-
-    /* =====================================================
-       PA
-    ====================================================== */
-
-    $("kpiPA").textContent =
-        formatPercentage(
-            latest.pa
-        );
-
-
-    $("kpiPADetail").textContent =
-        `Latest: ${getISODate(latest.date)}`;
-
-
-    /* =====================================================
-       PR
-    ====================================================== */
-
-    $("kpiPR").textContent =
-        formatPercentage(
-            latest.pr
-        );
-
-
-    $("kpiPRDetail").textContent =
-        `Latest: ${getISODate(latest.date)}`;
-
-
-    /* =====================================================
-       ACTUAL GENERATION
-    ====================================================== */
-
-    if (
-        Number.isFinite(
-            latest.actual
-        )
-    ) {
-
-        const generationMWh =
-            latest.actual / 1000;
-
-
-        $("kpiGen").textContent =
-            formatNumber(
-                generationMWh,
-                2
-            ) + " MWh";
-
-    }
-
-    else {
-
-        $("kpiGen").textContent =
-            "—";
-
-    }
-
-
-    $("kpiGenDetail").textContent =
-        "220 kV net export";
-
-
-    /* =====================================================
-       AEY
-    ====================================================== */
-
-    const latestAEY =
-        aeyValues[
-            aeyValues.length - 1
-        ];
-
-
-    $("kpiAEY").textContent =
-        formatNumber(
-            latestAEY,
-            2
-        );
-
-
-}
-
-
-/* =========================================================
-   FIND DGR HEADER ROW
-   ========================================================= */
-
-function findHeaderRow(
-    worksheet
-) {
+function detectHeaderRow(sheet) {
 
     const matrix =
         XLSX.utils.sheet_to_json(
-            worksheet,
+            sheet,
             {
                 header: 1,
-                raw: true,
-                defval: null
+                defval: null,
+                raw: true
             }
         );
 
 
     /*
-       Search first 20 rows.
-    */
+     * Search first 30 rows.
+     */
 
     for (
-        let i = 0;
-        i < Math.min(
+        let rowIndex = 0;
+        rowIndex <
+        Math.min(
             matrix.length,
-            20
+            30
         );
-        i++
+        rowIndex++
     ) {
 
         const row =
-            matrix[i] || [];
+            matrix[rowIndex] || [];
 
 
-        const headers =
+        const values =
             row.map(
                 value =>
                     String(
@@ -1300,21 +444,40 @@ function findHeaderRow(
             );
 
 
+        const lower =
+            values.map(
+                value =>
+                    value.toLowerCase()
+            );
+
+
+        const hasDate =
+            lower.some(
+                value =>
+                    value === "date"
+            );
+
+
+        const hasPA =
+            lower.some(
+                value =>
+                    value.includes("pa")
+            );
+
+
+        const hasPR =
+            lower.some(
+                value =>
+                    value.includes("pr")
+            );
+
+
         if (
-
-            headers.includes("Date")
-
-            &&
-
-            headers.includes("PA(%)")
-
-            &&
-
-            headers.includes("PR(%)")
-
+            hasDate &&
+            (hasPA || hasPR)
         ) {
 
-            return i;
+            return rowIndex;
 
         }
 
@@ -1322,112 +485,33 @@ function findHeaderRow(
 
 
     return -1;
-
 }
 
 
 /* =========================================================
-   PARSE WORKBOOK
+   READ SHEET
    ========================================================= */
 
-function parseWorkbook(
-    workbook
-) {
+function readSheet(sheet) {
 
-    let worksheet =
-        workbook.Sheets[
-            "Daily_KPI"
-        ];
+    const headerRow =
+        detectHeaderRow(sheet);
 
 
-    let headerRow = -1;
+    if (headerRow === -1) {
 
-
-    /*
-       First attempt:
-       supplied DGR structure.
-    */
-
-    if (worksheet) {
-
-        headerRow = 3;
-
-    }
-
-
-    /*
-       Fallback:
-       search all worksheets.
-    */
-
-    if (
-        !worksheet ||
-        headerRow < 0
-    ) {
-
-        for (
-            const sheetName
-            of workbook.SheetNames
-        ) {
-
-            const sheet =
-                workbook.Sheets[
-                    sheetName
-                ];
-
-
-            const found =
-                findHeaderRow(
-                    sheet
-                );
-
-
-            if (found >= 0) {
-
-                worksheet = sheet;
-
-                headerRow = found;
-
-                break;
-
-            }
-
-        }
-
-    }
-
-
-    if (!worksheet) {
-
-        throw new Error(
-
-            "No suitable DGR sheet was found."
-
-        );
-
-    }
-
-
-    if (
-        headerRow < 0
-    ) {
-
-        throw new Error(
-
-            "Could not find a header row containing Date, PA(%) and PR(%)."
-
-        );
+        return null;
 
     }
 
 
     const matrix =
         XLSX.utils.sheet_to_json(
-            worksheet,
+            sheet,
             {
                 header: 1,
-                raw: true,
-                defval: null
+                defval: null,
+                raw: true
             }
         );
 
@@ -1443,7 +527,7 @@ function parseWorkbook(
         );
 
 
-    const data = [];
+    const objects = [];
 
 
     for (
@@ -1456,13 +540,8 @@ function parseWorkbook(
             matrix[i];
 
 
-        if (
-            !row ||
-            !row.length
-        ) {
-
+        if (!row) {
             continue;
-
         }
 
 
@@ -1486,7 +565,7 @@ function parseWorkbook(
         );
 
 
-        data.push(
+        objects.push(
             object
         );
 
@@ -1495,97 +574,1905 @@ function parseWorkbook(
 
     return {
 
-        data: data,
+        headers,
 
-        headers: headers,
+        rows: objects,
 
-        sheetName:
-            workbook.SheetNames.find(
-                name =>
-                    workbook.Sheets[name]
-                    === worksheet
-            ) || "Daily_KPI"
+        headerRow
 
     };
+}
+
+
+/* =========================================================
+   FIND BEST WORKSHEET
+   ========================================================= */
+
+function findBestSheet(workbook) {
+
+    let best = null;
+
+
+    for (
+        const sheetName
+        of workbook.SheetNames
+    ) {
+
+        const sheet =
+            workbook.Sheets[
+                sheetName
+            ];
+
+
+        const result =
+            readSheet(sheet);
+
+
+        if (!result) {
+            continue;
+        }
+
+
+        const columns =
+            detectColumns(
+                result.headers
+            );
+
+
+        let score = 0;
+
+
+        if (columns.date) score += 5;
+        if (columns.pa) score += 3;
+        if (columns.pr) score += 3;
+        if (columns.ghi) score += 2;
+        if (columns.poaUp) score += 2;
+        if (columns.measured) score += 2;
+        if (columns.actual) score += 2;
+
+
+        if (
+            !best ||
+            score > best.score
+        ) {
+
+            best = {
+
+                sheetName,
+
+                result,
+
+                columns,
+
+                score
+
+            };
+
+        }
+
+    }
+
+
+    return best;
+}
+
+
+/* =========================================================
+   NORMALISE DATA
+   ========================================================= */
+
+function normalise(
+    sheetData
+) {
+
+    const {
+        rows,
+        columns
+    } = sheetData;
+
+
+    const output = [];
+
+
+    rows.forEach(
+        row => {
+
+            const date =
+                parseDate(
+                    row[
+                        columns.date
+                    ]
+                );
+
+
+            if (!date) {
+                return;
+            }
+
+
+            let pa =
+                num(
+                    row[
+                        columns.pa
+                    ]
+                );
+
+
+            let pr =
+                num(
+                    row[
+                        columns.pr
+                    ]
+                );
+
+
+            /*
+             * Some DGRs store PA/PR as decimals:
+             * 0.98 instead of 98.
+             *
+             * Convert automatically.
+             */
+
+            if (
+                pa !== null &&
+                pa <= 1
+            ) {
+
+                pa *= 100;
+
+            }
+
+
+            if (
+                pr !== null &&
+                pr <= 1
+            ) {
+
+                pr *= 100;
+
+            }
+
+
+            output.push({
+
+                date,
+
+                pa,
+
+                pr,
+
+                ghi:
+                    num(
+                        row[
+                            columns.ghi
+                        ]
+                    ),
+
+                poaUp:
+                    num(
+                        row[
+                            columns.poaUp
+                        ]
+                    ),
+
+                poaDown:
+                    num(
+                        row[
+                            columns.poaDown
+                        ]
+                    ),
+
+                measured:
+                    num(
+                        row[
+                            columns.measured
+                        ]
+                    ),
+
+                actual:
+                    num(
+                        row[
+                            columns.actual
+                        ]
+                    ),
+
+                capacity:
+                    num(
+                        row[
+                            columns.capacity
+                        ]
+                    )
+
+            });
+
+        }
+    );
+
+
+    output.sort(
+        (
+            a,
+            b
+        ) =>
+            a.date - b.date
+    );
+
+
+    return output;
+}
+
+
+/* =========================================================
+   FORMAT NUMBER
+   ========================================================= */
+
+function formatNumber(
+    value,
+    decimals = 2
+) {
+
+    if (
+        value === null ||
+        value === undefined ||
+        !Number.isFinite(value)
+    ) {
+
+        return "—";
+
+    }
+
+
+    return value.toLocaleString(
+        "en-IN",
+        {
+            minimumFractionDigits:
+                decimals,
+
+            maximumFractionDigits:
+                decimals
+        }
+    );
+}
+
+
+/* =========================================================
+   CHART COLORS
+   ========================================================= */
+
+const chartColors = {
+
+    primary:
+        "#27a5ad",
+
+    dark:
+        "#17252a",
+
+    secondary:
+        "#78c7cc",
+
+    light:
+        "#b9e2e4",
+
+    grey:
+        "#9aa8ab",
+
+    orange:
+        "#e6a23c"
+
+};
+
+
+/* =========================================================
+   DESTROY CHART
+   ========================================================= */
+
+function destroyChart(id) {
+
+    if (
+        chartInstances[id]
+    ) {
+
+        chartInstances[id].destroy();
+
+        delete chartInstances[id];
+
+    }
 
 }
 
 
 /* =========================================================
-   DISPLAY DATA MAPPING
+   CREATE CHART
    ========================================================= */
 
-function showMappingInfo(
-    parsed
+function createChart(
+    id,
+    config
 ) {
 
-    $("mappingInfo").innerHTML = `
+    const canvas =
+        el(id);
+
+
+    if (!canvas) {
+        return;
+    }
+
+
+    destroyChart(id);
+
+
+    chartInstances[id] =
+        new Chart(
+            canvas,
+            config
+        );
+
+}
+
+
+/* =========================================================
+   COMMON OPTIONS
+   ========================================================= */
+
+function commonOptions(
+    yTitle = ""
+) {
+
+    return {
+
+        responsive: true,
+
+        maintainAspectRatio: false,
+
+        interaction: {
+
+            mode: "index",
+
+            intersect: false
+
+        },
+
+        plugins: {
+
+            legend: {
+
+                position: "top",
+
+                labels: {
+
+                    usePointStyle: true,
+
+                    padding: 15,
+
+                    font: {
+
+                        family: "Inter",
+
+                        size: 10
+
+                    }
+
+                }
+
+            },
+
+            tooltip: {
+
+                backgroundColor:
+                    "#17252a",
+
+                padding: 10,
+
+                cornerRadius: 7
+
+            }
+
+        },
+
+        scales: {
+
+            x: {
+
+                grid: {
+
+                    display: false
+
+                },
+
+                ticks: {
+
+                    maxTicksLimit: 12,
+
+                    font: {
+
+                        size: 9
+
+                    }
+
+                }
+
+            },
+
+            y: {
+
+                grid: {
+
+                    color:
+                        "rgba(23,37,42,0.07)"
+
+                },
+
+                title: {
+
+                    display:
+                        Boolean(yTitle),
+
+                    text:
+                        yTitle,
+
+                    font: {
+
+                        size: 10
+
+                    }
+
+                },
+
+                ticks: {
+
+                    font: {
+
+                        size: 9
+
+                    }
+
+                }
+
+            }
+
+        }
+
+    };
+}
+
+
+/* =========================================================
+   LINE CHART
+   ========================================================= */
+
+function makeLineChart(
+    id,
+    labels,
+    datasets,
+    yTitle
+) {
+
+    createChart(
+        id,
+        {
+
+            type: "line",
+
+            data: {
+
+                labels,
+
+                datasets
+
+            },
+
+            options:
+                commonOptions(
+                    yTitle
+                )
+
+        }
+    );
+
+}
+
+
+/* =========================================================
+   BAR CHART
+   ========================================================= */
+
+function makeBarChart(
+    id,
+    labels,
+    datasets,
+    yTitle
+) {
+
+    createChart(
+        id,
+        {
+
+            type: "bar",
+
+            data: {
+
+                labels,
+
+                datasets
+
+            },
+
+            options:
+                commonOptions(
+                    yTitle
+                )
+
+        }
+    );
+
+}
+
+
+/* =========================================================
+   PA CHARTS
+   ========================================================= */
+
+function drawPA(
+    labels,
+    data
+) {
+
+    const dataset = {
+
+        label:
+            "Plant Availability (%)",
+
+        data,
+
+        borderColor:
+            chartColors.primary,
+
+        backgroundColor:
+            "rgba(39,165,173,0.10)",
+
+        pointBackgroundColor:
+            chartColors.primary,
+
+        pointRadius: 3,
+
+        pointHoverRadius: 6,
+
+        borderWidth: 2,
+
+        tension: 0.3
+
+    };
+
+
+    makeLineChart(
+        "paChart",
+        labels,
+        [dataset],
+        "Availability (%)"
+    );
+
+
+    makeBarChart(
+
+        "paBarChart",
+
+        labels,
+
+        [
+
+            {
+
+                label:
+                    "Plant Availability (%)",
+
+                data,
+
+                backgroundColor:
+                    "rgba(39,165,173,0.65)",
+
+                borderRadius: 4
+
+            }
+
+        ],
+
+        "Availability (%)"
+
+    );
+
+}
+
+
+/* =========================================================
+   PR CHARTS
+   ========================================================= */
+
+function drawPR(
+    labels,
+    data
+) {
+
+    makeLineChart(
+
+        "prChart",
+
+        labels,
+
+        [
+
+            {
+
+                label:
+                    "Performance Ratio (%)",
+
+                data,
+
+                borderColor:
+                    chartColors.dark,
+
+                backgroundColor:
+                    "rgba(23,37,42,0.08)",
+
+                pointBackgroundColor:
+                    chartColors.dark,
+
+                pointRadius: 3,
+
+                borderWidth: 2,
+
+                tension: 0.3
+
+            }
+
+        ],
+
+        "PR (%)"
+
+    );
+
+
+    makeBarChart(
+
+        "prBarChart",
+
+        labels,
+
+        [
+
+            {
+
+                label:
+                    "Performance Ratio (%)",
+
+                data,
+
+                backgroundColor:
+                    "rgba(23,37,42,0.60)",
+
+                borderRadius: 4
+
+            }
+
+        ],
+
+        "PR (%)"
+
+    );
+
+}
+
+
+/* =========================================================
+   AEY CALCULATION
+   ========================================================= */
+
+function calculateAEY(
+    data
+) {
+
+    let cumulative =
+        0;
+
+
+    let capacity =
+        null;
+
+
+    /*
+       Find first valid capacity.
+    */
+
+    for (
+        const row
+        of data
+    ) {
+
+        if (
+            row.capacity !== null &&
+            row.capacity > 0
+        ) {
+
+            capacity =
+                row.capacity;
+
+            break;
+
+        }
+
+    }
+
+
+    /*
+       If capacity isn't available,
+       use a default only for visualization.
+    */
+
+    if (
+        !capacity ||
+        capacity <= 0
+    ) {
+
+        return data.map(
+            () => null
+        );
+
+    }
+
+
+    const capacityKwp =
+        capacity * 1000;
+
+
+    return data.map(
+        row => {
+
+            if (
+                row.actual !== null
+            ) {
+
+                cumulative +=
+                    row.actual;
+
+            }
+
+
+            return (
+                cumulative /
+                capacityKwp
+            );
+
+        }
+    );
+
+}
+
+
+/* =========================================================
+   AEY CHART
+   ========================================================= */
+
+function drawAEY(
+    labels,
+    values
+) {
+
+    createChart(
+
+        "aeyChart",
+
+        {
+
+            type: "line",
+
+            data: {
+
+                labels,
+
+                datasets: [
+
+                    {
+
+                        label:
+                            "Cumulative AEY (kWh/kWp)",
+
+                        data: values,
+
+                        borderColor:
+                            chartColors.primary,
+
+                        backgroundColor:
+                            "rgba(39,165,173,0.14)",
+
+                        fill: true,
+
+                        pointRadius: 2,
+
+                        borderWidth: 2,
+
+                        tension: 0.25
+
+                    }
+
+                ]
+
+            },
+
+            options:
+                commonOptions(
+                    "kWh/kWp"
+                )
+
+        }
+
+    );
+
+}
+
+
+/* =========================================================
+   GHI CHARTS
+   ========================================================= */
+
+function drawGHI(
+    labels,
+    values
+) {
+
+    makeBarChart(
+
+        "ghiChart",
+
+        labels,
+
+        [
+
+            {
+
+                label:
+                    "GHI (kWh/m²)",
+
+                data: values,
+
+                backgroundColor:
+                    "rgba(230,162,60,0.70)",
+
+                borderRadius: 4
+
+            }
+
+        ],
+
+        "GHI (kWh/m²)"
+
+    );
+
+
+    makeLineChart(
+
+        "ghiLineChart",
+
+        labels,
+
+        [
+
+            {
+
+                label:
+                    "GHI (kWh/m²)",
+
+                data: values,
+
+                borderColor:
+                    chartColors.orange,
+
+                backgroundColor:
+                    "rgba(230,162,60,0.12)",
+
+                pointRadius: 3,
+
+                borderWidth: 2,
+
+                tension: 0.3
+
+            }
+
+        ],
+
+        "GHI (kWh/m²)"
+
+    );
+
+}
+
+
+/* =========================================================
+   POA / GII CHART
+   ========================================================= */
+
+function drawGII(
+    labels,
+    poaUp,
+    poaDown
+) {
+
+    makeLineChart(
+
+        "giiChart",
+
+        labels,
+
+        [
+
+            {
+
+                label:
+                    "POA Up (kWh/m²)",
+
+                data:
+                    poaUp,
+
+                borderColor:
+                    chartColors.primary,
+
+                backgroundColor:
+                    "rgba(39,165,173,0.10)",
+
+                pointRadius: 2,
+
+                borderWidth: 2,
+
+                tension: 0.3
+
+            },
+
+            {
+
+                label:
+                    "POA Down (kWh/m²)",
+
+                data:
+                    poaDown,
+
+                borderColor:
+                    chartColors.dark,
+
+                backgroundColor:
+                    "rgba(23,37,42,0.08)",
+
+                pointRadius: 2,
+
+                borderWidth: 2,
+
+                tension: 0.3
+
+            }
+
+        ],
+
+        "Irradiance (kWh/m²)"
+
+    );
+
+}
+
+
+/* =========================================================
+   GENERATION CHART
+   ========================================================= */
+
+function drawGeneration(
+    labels,
+    measured,
+    actual
+) {
+
+    /*
+       LINE
+    */
+
+    makeLineChart(
+
+        "generationChart",
+
+        labels,
+
+        [
+
+            {
+
+                label:
+                    "Measured / Inverter Export",
+
+                data:
+                    measured,
+
+                borderColor:
+                    chartColors.primary,
+
+                backgroundColor:
+                    "rgba(39,165,173,0.08)",
+
+                pointRadius: 2,
+
+                borderWidth: 2,
+
+                tension: 0.25
+
+            },
+
+            {
+
+                label:
+                    "Actual / 220kV Net Export",
+
+                data:
+                    actual,
+
+                borderColor:
+                    chartColors.dark,
+
+                backgroundColor:
+                    "rgba(23,37,42,0.08)",
+
+                pointRadius: 2,
+
+                borderWidth: 2,
+
+                tension: 0.25
+
+            }
+
+        ],
+
+        "Generation (kWh)"
+
+    );
+
+
+    /*
+       BAR
+    */
+
+    makeBarChart(
+
+        "generationBarChart",
+
+        labels,
+
+        [
+
+            {
+
+                label:
+                    "Measured",
+
+                data:
+                    measured,
+
+                backgroundColor:
+                    "rgba(39,165,173,0.65)",
+
+                borderRadius: 3
+
+            },
+
+            {
+
+                label:
+                    "Actual",
+
+                data:
+                    actual,
+
+                backgroundColor:
+                    "rgba(23,37,42,0.60)",
+
+                borderRadius: 3
+
+            }
+
+        ],
+
+        "Generation (kWh)"
+
+    );
+
+
+    /*
+       PIE / DOUGHNUT
+       Based on total measured vs actual.
+    */
+
+    const totalMeasured =
+        measured
+            .filter(
+                value =>
+                    value !== null
+            )
+            .reduce(
+                (
+                    sum,
+                    value
+                ) =>
+                    sum + value,
+                0
+            );
+
+
+    const totalActual =
+        actual
+            .filter(
+                value =>
+                    value !== null
+            )
+            .reduce(
+                (
+                    sum,
+                    value
+                ) =>
+                    sum + value,
+                0
+            );
+
+
+    const difference =
+        Math.max(
+            totalMeasured -
+            totalActual,
+            0
+        );
+
+
+    createChart(
+
+        "generationPieChart",
+
+        {
+
+            type: "doughnut",
+
+            data: {
+
+                labels: [
+
+                    "Actual Generation",
+
+                    "Generation Difference"
+
+                ],
+
+                datasets: [
+
+                    {
+
+                        data: [
+
+                            totalActual,
+
+                            difference
+
+                        ],
+
+                        backgroundColor: [
+
+                            chartColors.primary,
+
+                            chartColors.light
+
+                        ],
+
+                        borderWidth: 0
+
+                    }
+
+                ]
+
+            },
+
+            options: {
+
+                responsive: true,
+
+                maintainAspectRatio: false,
+
+                cutout: "62%",
+
+                plugins: {
+
+                    legend: {
+
+                        position: "bottom",
+
+                        labels: {
+
+                            usePointStyle: true,
+
+                            padding: 15,
+
+                            font: {
+
+                                size: 10
+
+                            }
+
+                        }
+
+                    },
+
+                    tooltip: {
+
+                        callbacks: {
+
+                            label:
+                                function(
+                                    context
+                                ) {
+
+                                    return (
+
+                                        " " +
+
+                                        context.label +
+
+                                        ": " +
+
+                                        formatNumber(
+                                            context.raw / 1000,
+                                            2
+                                        ) +
+
+                                        " MWh"
+
+                                    );
+
+                                }
+
+                        }
+
+                    }
+
+                }
+
+            }
+
+        }
+
+    );
+
+}
+
+
+/* =========================================================
+   SCATTER PLOT
+   ========================================================= */
+
+function drawScatter(
+    data
+) {
+
+    const points =
+        data
+            .filter(
+                row =>
+                    row.ghi !== null &&
+                    row.actual !== null
+            )
+            .map(
+                row => ({
+
+                    x: row.ghi,
+
+                    y: row.actual / 1000,
+
+                    date:
+                        shortDate(
+                            row.date
+                        )
+
+                })
+            );
+
+
+    createChart(
+
+        "scatterChart",
+
+        {
+
+            type: "scatter",
+
+            data: {
+
+                datasets: [
+
+                    {
+
+                        label:
+                            "GHI vs Actual Generation",
+
+                        data: points,
+
+                        backgroundColor:
+                            chartColors.primary,
+
+                        borderColor:
+                            chartColors.primary,
+
+                        pointRadius: 5,
+
+                        pointHoverRadius: 7
+
+                    }
+
+                ]
+
+            },
+
+            options: {
+
+                responsive: true,
+
+                maintainAspectRatio: false,
+
+                plugins: {
+
+                    legend: {
+
+                        position: "top",
+
+                        labels: {
+
+                            usePointStyle: true,
+
+                            font: {
+
+                                size: 10
+
+                            }
+
+                        }
+
+                    },
+
+                    tooltip: {
+
+                        callbacks: {
+
+                            label:
+                                function(
+                                    context
+                                ) {
+
+                                    const point =
+                                        context.raw;
+
+
+                                    return (
+
+                                        ` ${point.date} | ` +
+
+                                        `GHI: ${formatNumber(
+                                            point.x,
+                                            2
+                                        )} | ` +
+
+                                        `Generation: ${formatNumber(
+                                            point.y,
+                                            2
+                                        )} MWh`
+
+                                    );
+
+                                }
+
+                        }
+
+                    }
+
+                },
+
+                scales: {
+
+                    x: {
+
+                        title: {
+
+                            display: true,
+
+                            text:
+                                "GHI (kWh/m²)"
+
+                        },
+
+                        grid: {
+
+                            color:
+                                "rgba(23,37,42,0.07)"
+
+                        }
+
+                    },
+
+                    y: {
+
+                        title: {
+
+                            display: true,
+
+                            text:
+                                "Actual Generation (MWh)"
+
+                        },
+
+                        grid: {
+
+                            color:
+                                "rgba(23,37,42,0.07)"
+
+                        }
+
+                    }
+
+                }
+
+            }
+
+        }
+
+    );
+
+}
+
+
+/* =========================================================
+   FILTER DATA
+   ========================================================= */
+
+function applyFilters() {
+
+    if (!allData.length) {
+        return;
+    }
+
+
+    const from =
+        el("fromDate").value;
+
+    const to =
+        el("toDate").value;
+
+
+    /*
+       Custom date range
+    */
+
+    if (from || to) {
+
+        const fromDate =
+            from
+                ? new Date(
+                    from +
+                    "T00:00:00"
+                )
+                : null;
+
+
+        const toDate =
+            to
+                ? new Date(
+                    to +
+                    "T23:59:59"
+                )
+                : null;
+
+
+        filteredData =
+            allData.filter(
+                row => {
+
+                    return (
+
+                        (!fromDate ||
+                            row.date >= fromDate)
+
+                        &&
+
+                        (!toDate ||
+                            row.date <= toDate)
+
+                    );
+
+                }
+            );
+
+    }
+
+    else {
+
+        const selected =
+            document.querySelector(
+                ".range-button.selected"
+            );
+
+
+        const range =
+            selected
+                ? selected.dataset.range
+                : "30";
+
+
+        if (range === "all") {
+
+            filteredData =
+                [...allData];
+
+        }
+
+        else {
+
+            filteredData =
+                allData.slice(
+                    -Number(range)
+                );
+
+        }
+
+    }
+
+
+    renderDashboard();
+
+}
+
+
+/* =========================================================
+   RENDER EVERYTHING
+   ========================================================= */
+
+function renderDashboard() {
+
+    if (!filteredData.length) {
+
+        return;
+
+    }
+
+
+    const labels =
+        filteredData.map(
+            row =>
+                shortDate(
+                    row.date
+                )
+        );
+
+
+    /*
+       PA
+    */
+
+    drawPA(
+
+        labels,
+
+        filteredData.map(
+            row =>
+                row.pa
+        )
+
+    );
+
+
+    /*
+       PR
+    */
+
+    drawPR(
+
+        labels,
+
+        filteredData.map(
+            row =>
+                row.pr
+        )
+
+    );
+
+
+    /*
+       AEY
+    */
+
+    const aey =
+        calculateAEY(
+            filteredData
+        );
+
+
+    drawAEY(
+        labels,
+        aey
+    );
+
+
+    /*
+       GHI
+    */
+
+    drawGHI(
+
+        labels,
+
+        filteredData.map(
+            row =>
+                row.ghi
+        )
+
+    );
+
+
+    /*
+       POA / GII
+    */
+
+    drawGII(
+
+        labels,
+
+        filteredData.map(
+            row =>
+                row.poaUp
+        ),
+
+        filteredData.map(
+            row =>
+                row.poaDown
+        )
+
+    );
+
+
+    /*
+       Generation
+    */
+
+    drawGeneration(
+
+        labels,
+
+        filteredData.map(
+            row =>
+                row.measured
+        ),
+
+        filteredData.map(
+            row =>
+                row.actual
+        )
+
+    );
+
+
+    /*
+       Scatter
+    */
+
+    drawScatter(
+        filteredData
+    );
+
+
+    /*
+       KPIs
+    */
+
+    updateKPIs(
+        aey
+    );
+
+
+    /*
+       Status
+    */
+
+    const first =
+        filteredData[0];
+
+    const last =
+        filteredData[
+            filteredData.length - 1
+        ];
+
+
+    el("dataStatus").textContent =
+
+        `${allData.length} DGR records loaded • ` +
+
+        `Showing ${filteredData.length} days • ` +
+
+        `${isoDate(first.date)} → ${isoDate(last.date)}`;
+
+}
+
+
+/* =========================================================
+   KPI UPDATE
+   ========================================================= */
+
+function updateKPIs(
+    aey
+) {
+
+    if (!filteredData.length) {
+        return;
+    }
+
+
+    const latest =
+        filteredData[
+            filteredData.length - 1
+        ];
+
+
+    /*
+       PA
+    */
+
+    el("kpiPA").textContent =
+
+        latest.pa !== null
+
+            ? formatNumber(
+                latest.pa,
+                2
+            ) + "%"
+
+            : "—";
+
+
+    /*
+       PR
+    */
+
+    el("kpiPR").textContent =
+
+        latest.pr !== null
+
+            ? formatNumber(
+                latest.pr,
+                2
+            ) + "%"
+
+            : "—";
+
+
+    /*
+       AEY
+    */
+
+    const latestAEY =
+        aey[
+            aey.length - 1
+        ];
+
+
+    el("kpiAEY").textContent =
+
+        latestAEY !== null &&
+        latestAEY !== undefined
+
+            ? formatNumber(
+                latestAEY,
+                2
+            )
+
+            : "—";
+
+
+    /*
+       Generation
+    */
+
+    el("kpiGen").textContent =
+
+        latest.actual !== null
+
+            ? formatNumber(
+                latest.actual / 1000,
+                2
+            ) + " MWh"
+
+            : "—";
+
+
+    /*
+       Capacity
+    */
+
+    const capacityRow =
+        allData.find(
+            row =>
+                row.capacity !== null
+        );
+
+
+    if (
+        capacityRow &&
+        capacityRow.capacity
+    ) {
+
+        el("plantCapacity").textContent =
+
+            `${formatNumber(
+                capacityRow.capacity,
+                2
+            )} MWp DC`;
+
+    }
+
+}
+
+
+/* =========================================================
+   MAPPING DISPLAY
+   ========================================================= */
+
+function displayMapping(
+    sheetName,
+    columns
+) {
+
+    el("mappingInfo").innerHTML = `
 
         <strong>
-            Detected sheet:
+            DGR successfully loaded
         </strong>
-
-        ${parsed.sheetName}
 
         <br>
 
-        <strong>
-            Date:
-        </strong>
-
-        ${FIELD.date}
-
-        ·
-
-        <strong>
-            PA:
-        </strong>
-
-        ${FIELD.plantAvailability}
-
-        ·
-
-        <strong>
-            PR:
-        </strong>
-
-        ${FIELD.performanceRatio}
+        Sheet:
+        ${sheetName}
 
         <br>
 
-        <strong>
-            GHI:
-        </strong>
-
-        ${FIELD.ghi}
-
-        ·
-
-        <strong>
-            GII / POA:
-        </strong>
-
-        ${FIELD.poaUp}
-
-        /
-
-        ${FIELD.poaDown}
+        Date:
+        ${columns.date || "Not found"}
 
         <br>
 
-        <strong>
-            Measured Generation:
-        </strong>
-
-        ${FIELD.measuredGeneration}
+        PA:
+        ${columns.pa || "Not found"}
 
         ·
 
-        <strong>
-            Actual Generation:
-        </strong>
+        PR:
+        ${columns.pr || "Not found"}
 
-        ${FIELD.actualGeneration}
+        ·
+
+        GHI:
+        ${columns.ghi || "Not found"}
+
+        <br>
+
+        POA Up:
+        ${columns.poaUp || "Not found"}
+
+        ·
+
+        POA Down:
+        ${columns.poaDown || "Not found"}
+
+        <br>
+
+        Measured:
+        ${columns.measured || "Not found"}
+
+        ·
+
+        Actual:
+        ${columns.actual || "Not found"}
 
     `;
 
@@ -1593,76 +2480,35 @@ function showMappingInfo(
 
 
 /* =========================================================
-   UPDATE DATE PICKERS
+   LOAD DGR
    ========================================================= */
 
-function updateDateLimits() {
-
-    if (!rows.length) {
-
-        return;
-
-    }
-
-
-    const firstDate =
-        getISODate(
-            rows[0].date
-        );
-
-
-    const lastDate =
-        getISODate(
-            rows[
-                rows.length - 1
-            ].date
-        );
-
-
-    $("fromDate").min =
-        firstDate;
-
-    $("fromDate").max =
-        lastDate;
-
-
-    $("toDate").min =
-        firstDate;
-
-    $("toDate").max =
-        lastDate;
-
-}
-
-
-/* =========================================================
-   LOAD DGR FILE
-   ========================================================= */
-
-async function loadDGRFile(
+async function loadDGR(
     file
 ) {
 
     if (!file) {
-
         return;
-
     }
 
 
     try {
 
+        el("dataStatus").textContent =
+            "Reading DGR...";
+
+
         /*
-           Read file in browser.
-        */
+         * Read file.
+         */
 
         const buffer =
             await file.arrayBuffer();
 
 
         /*
-           Read Excel workbook.
-        */
+         * Parse workbook.
+         */
 
         const workbook =
             XLSX.read(
@@ -1675,30 +2521,20 @@ async function loadDGRFile(
 
 
         /*
-           Parse DGR.
-        */
+         * Find best worksheet.
+         */
 
-        const parsed =
-            parseWorkbook(
+        const best =
+            findBestSheet(
                 workbook
             );
 
 
-        /*
-           Convert raw data.
-        */
-
-        rows =
-            normaliseData(
-                parsed.data
-            );
-
-
-        if (!rows.length) {
+        if (!best) {
 
             throw new Error(
 
-                "No usable daily records were found in the DGR."
+                "No worksheet containing usable DGR data was found."
 
             );
 
@@ -1706,92 +2542,112 @@ async function loadDGRFile(
 
 
         /*
-           Find DC capacity.
-        */
+         * Check minimum requirement.
+         */
 
-        const capacityRow =
-            rows.find(
-                row =>
-                    Number.isFinite(
-                        row.capacity
-                    )
+        if (!best.columns.date) {
+
+            throw new Error(
+
+                "The DGR does not contain a Date column."
+
             );
-
-
-        if (
-            capacityRow &&
-            Number.isFinite(
-                capacityRow.capacity
-            )
-        ) {
-
-            $("plantCapacity").textContent =
-
-                `${formatNumber(
-                    capacityRow.capacity,
-                    2
-                )} MWp DC`;
 
         }
 
 
         /*
-           Show mapping.
-        */
+         * Normalise.
+         */
 
-        showMappingInfo(
-            parsed
+        allData =
+            normalise(
+                best.result
+            );
+
+
+        if (!allData.length) {
+
+            throw new Error(
+
+                "The worksheet was found, but no valid daily records could be read."
+
+            );
+
+        }
+
+
+        /*
+         * Display detected fields.
+         */
+
+        displayMapping(
+            best.sheetName,
+            best.columns
         );
 
 
         /*
-           Update date limits.
-        */
+         * Date limits.
+         */
 
-        updateDateLimits();
+        const first =
+            allData[0].date;
+
+        const last =
+            allData[
+                allData.length - 1
+            ].date;
+
+
+        el("fromDate").min =
+            isoDate(first);
+
+        el("fromDate").max =
+            isoDate(last);
+
+        el("toDate").min =
+            isoDate(first);
+
+        el("toDate").max =
+            isoDate(last);
 
 
         /*
-           Render dashboard.
-        */
+         * Apply current filter.
+         */
 
-        renderDashboard();
-
-
-        /*
-           Update status.
-        */
-
-        $("dataStatus").textContent =
-
-            `${rows.length} DGR days loaded successfully.`;
+        applyFilters();
 
 
         /*
-           Scroll to dashboard.
-        */
+         * Success message.
+         */
 
-        $("dashboard").scrollIntoView({
+        el("dataStatus").textContent =
 
-            behavior: "smooth",
+            `DGR loaded successfully • ` +
 
-            block: "start"
+            `${allData.length} daily records • ` +
 
-        });
+            `Sheet: ${best.sheetName}`;
 
     }
 
     catch (error) {
 
         console.error(
-            "DGR Error:",
             error
         );
 
 
+        el("dataStatus").textContent =
+            "DGR could not be loaded.";
+
+
         alert(
 
-            "DGR upload failed.\n\n" +
+            "DGR upload error:\n\n" +
             error.message
 
         );
@@ -1802,10 +2658,10 @@ async function loadDGRFile(
 
 
 /* =========================================================
-   FILE INPUT
+   FILE UPLOAD
    ========================================================= */
 
-$("dgrInput")
+el("dgrInput")
     .addEventListener(
         "change",
         event => {
@@ -1814,181 +2670,9 @@ $("dgrInput")
                 event.target.files[0];
 
 
-            loadDGRFile(
+            loadDGR(
                 file
             );
-
-        }
-    );
-
-
-/* =========================================================
-   RANGE BUTTONS
-   ========================================================= */
-
-document
-    .querySelectorAll(
-        ".range-button"
-    )
-    .forEach(
-        button => {
-
-            button.addEventListener(
-                "click",
-                () => {
-
-                    /*
-                       Remove active state.
-                    */
-
-                    document
-                        .querySelectorAll(
-                            ".range-button"
-                        )
-                        .forEach(
-                            item =>
-                                item.classList.remove(
-                                    "selected"
-                                )
-                        );
-
-
-                    /*
-                       Activate clicked button.
-                    */
-
-                    button.classList.add(
-                        "selected"
-                    );
-
-
-                    /*
-                       Clear custom dates.
-                    */
-
-                    $("fromDate").value =
-                        "";
-
-                    $("toDate").value =
-                        "";
-
-
-                    /*
-                       Render.
-                    */
-
-                    renderDashboard();
-
-                }
-            );
-
-        }
-    );
-
-
-/* =========================================================
-   APPLY CUSTOM DATE
-   ========================================================= */
-
-$("applyDate")
-    .addEventListener(
-        "click",
-        () => {
-
-            const from =
-                $("fromDate").value;
-
-            const to =
-                $("toDate").value;
-
-
-            if (
-                from &&
-                to &&
-                from > to
-            ) {
-
-                alert(
-                    "The 'From' date cannot be after the 'To' date."
-                );
-
-                return;
-
-            }
-
-
-            /*
-               Remove preset selection.
-            */
-
-            document
-                .querySelectorAll(
-                    ".range-button"
-                )
-                .forEach(
-                    button =>
-                        button.classList.remove(
-                            "selected"
-                        )
-                );
-
-
-            renderDashboard();
-
-        }
-    );
-
-
-/* =========================================================
-   RESET FILTER
-   ========================================================= */
-
-$("resetDate")
-    .addEventListener(
-        "click",
-        () => {
-
-            $("fromDate").value =
-                "";
-
-            $("toDate").value =
-                "";
-
-
-            /*
-               Restore 30 days.
-            */
-
-            document
-                .querySelectorAll(
-                    ".range-button"
-                )
-                .forEach(
-                    button =>
-                        button.classList.remove(
-                            "selected"
-                        )
-                );
-
-
-            const thirtyDayButton =
-                document.querySelector(
-                    '.range-button[data-range="30"]'
-                );
-
-
-            if (
-                thirtyDayButton
-            ) {
-
-                thirtyDayButton.classList.add(
-                    "selected"
-                );
-
-            }
-
-
-            renderDashboard();
 
         }
     );
@@ -1999,47 +2683,20 @@ $("resetDate")
    ========================================================= */
 
 const dropzone =
-    $("dropzone");
+    el("dropzone");
 
 
 if (dropzone) {
-
-
-    /*
-       Click upload area.
-    */
 
     dropzone.addEventListener(
         "click",
         () => {
 
-            $("dgrInput").click();
+            el("dgrInput").click();
 
         }
     );
 
-
-    /*
-       Drag enter.
-    */
-
-    dropzone.addEventListener(
-        "dragenter",
-        event => {
-
-            event.preventDefault();
-
-            dropzone.classList.add(
-                "dragging"
-            );
-
-        }
-    );
-
-
-    /*
-       Drag over.
-    */
 
     dropzone.addEventListener(
         "dragover",
@@ -2055,15 +2712,9 @@ if (dropzone) {
     );
 
 
-    /*
-       Drag leave.
-    */
-
     dropzone.addEventListener(
         "dragleave",
-        event => {
-
-            event.preventDefault();
+        () => {
 
             dropzone.classList.remove(
                 "dragging"
@@ -2072,10 +2723,6 @@ if (dropzone) {
         }
     );
 
-
-    /*
-       Drop.
-    */
 
     dropzone.addEventListener(
         "drop",
@@ -2093,7 +2740,7 @@ if (dropzone) {
                 event.dataTransfer.files[0];
 
 
-            loadDGRFile(
+            loadDGR(
                 file
             );
 
@@ -2104,21 +2751,166 @@ if (dropzone) {
 
 
 /* =========================================================
+   RANGE BUTTONS
+   ========================================================= */
+
+document
+    .querySelectorAll(
+        ".range-button"
+    )
+    .forEach(
+        button => {
+
+            button.addEventListener(
+                "click",
+                () => {
+
+                    document
+                        .querySelectorAll(
+                            ".range-button"
+                        )
+                        .forEach(
+                            item =>
+                                item.classList.remove(
+                                    "selected"
+                                )
+                        );
+
+
+                    button.classList.add(
+                        "selected"
+                    );
+
+
+                    /*
+                     * Clear custom dates.
+                     */
+
+                    el("fromDate").value =
+                        "";
+
+                    el("toDate").value =
+                        "";
+
+
+                    applyFilters();
+
+                }
+            );
+
+        }
+    );
+
+
+/* =========================================================
+   CUSTOM DATE
+   ========================================================= */
+
+el("applyDate")
+    .addEventListener(
+        "click",
+        () => {
+
+            const from =
+                el("fromDate").value;
+
+            const to =
+                el("toDate").value;
+
+
+            if (
+                from &&
+                to &&
+                from > to
+            ) {
+
+                alert(
+                    "From date cannot be later than To date."
+                );
+
+                return;
+
+            }
+
+
+            document
+                .querySelectorAll(
+                    ".range-button"
+                )
+                .forEach(
+                    button =>
+                        button.classList.remove(
+                            "selected"
+                        )
+                );
+
+
+            applyFilters();
+
+        }
+    );
+
+
+/* =========================================================
+   RESET
+   ========================================================= */
+
+el("resetDate")
+    .addEventListener(
+        "click",
+        () => {
+
+            el("fromDate").value =
+                "";
+
+            el("toDate").value =
+                "";
+
+
+            document
+                .querySelectorAll(
+                    ".range-button"
+                )
+                .forEach(
+                    button =>
+                        button.classList.remove(
+                            "selected"
+                        )
+                );
+
+
+            const defaultButton =
+                document.querySelector(
+                    '.range-button[data-range="30"]'
+                );
+
+
+            if (defaultButton) {
+
+                defaultButton.classList.add(
+                    "selected"
+                );
+
+            }
+
+
+            applyFilters();
+
+        }
+    );
+
+
+/* =========================================================
    INITIAL STATE
    ========================================================= */
 
-document.addEventListener(
+window.addEventListener(
     "DOMContentLoaded",
     () => {
 
-        /*
-           Dashboard starts empty.
-           User uploads a DGR to populate it.
-        */
+        el("dataStatus").textContent =
 
-        $("dataStatus").textContent =
-
-            "No DGR loaded. Upload the Daily Generation Report to begin analysis.";
+            "No DGR loaded — upload an Excel or CSV Daily Generation Report.";
 
     }
 );
