@@ -1,198 +1,2948 @@
 /* =========================================================
-   SRI1PL SOLAR DGR ANALYTICS
-   COMPLETE DASHBOARD ENGINE
-   ========================================================= */
+   SOLAR DGR ANALYTICS
+   app.js
+
+   ONLY THESE WORKSHEETS ARE USED:
+
+   1. Dashboard
+   2. Annual_KPI
+   3. Daily_KPI
+   4. PA
+   5. Curtailment records
+
+   ALL OTHER WORKSHEETS ARE IGNORED.
+========================================================= */
 
 
 /* =========================================================
-   GLOBAL STATE
-   ========================================================= */
+   GLOBAL VARIABLES
+========================================================= */
 
-let allData = [];
-let filteredData = [];
+let workbook = null;
 
-const chartInstances = {};
+let charts = {};
+
+let dgrData = {
+    dashboard: null,
+    annual: null,
+    daily: null,
+    pa: null,
+    curtailment: null
+};
 
 
 /* =========================================================
-   DOM HELPER
-   ========================================================= */
+   CONSTANTS
+========================================================= */
 
-function el(id) {
+const REQUIRED_SHEETS = [
+    "Dashboard",
+    "Annual_KPI",
+    "Daily_KPI",
+    "PA",
+    "Curtailment records"
+];
+
+
+/* =========================================================
+   DOM HELPERS
+========================================================= */
+
+function getElement(id) {
     return document.getElementById(id);
 }
 
 
 /* =========================================================
-   SAFE NUMBER
-   ========================================================= */
+   STATUS MESSAGE
+========================================================= */
 
-function num(value) {
+function setStatus(message) {
 
-    if (
-        value === null ||
-        value === undefined ||
-        value === ""
-    ) {
-        return null;
+    const element = getElement("statusMessage");
+
+    if (element) {
+        element.textContent = message;
     }
-
-    if (typeof value === "number") {
-        return Number.isFinite(value)
-            ? value
-            : null;
-    }
-
-    let text = String(value)
-        .trim()
-        .replace(/,/g, "")
-        .replace(/%/g, "");
-
-    if (!text) {
-        return null;
-    }
-
-    const result = parseFloat(text);
-
-    return Number.isFinite(result)
-        ? result
-        : null;
 }
 
 
 /* =========================================================
-   DATE PARSER
-   ========================================================= */
+   FILE UPLOAD
+========================================================= */
 
-function parseDate(value) {
+const fileInput = getElement("dgrUpload");
 
-    if (value instanceof Date) {
+const dropZone = getElement("dropZone");
 
-        return isNaN(value.getTime())
-            ? null
-            : value;
+const removeFileButton = getElement("removeFile");
 
+
+if (fileInput) {
+
+    fileInput.addEventListener(
+        "change",
+        function(event) {
+
+            const file = event.target.files[0];
+
+            if (file) {
+                processDGR(file);
+            }
+
+        }
+    );
+
+}
+
+
+/* =========================================================
+   DROP ZONE
+========================================================= */
+
+if (dropZone) {
+
+    dropZone.addEventListener(
+        "click",
+        function() {
+
+            if (fileInput) {
+                fileInput.click();
+            }
+
+        }
+    );
+
+
+    dropZone.addEventListener(
+        "dragover",
+        function(event) {
+
+            event.preventDefault();
+
+            dropZone.classList.add("dragging");
+
+        }
+    );
+
+
+    dropZone.addEventListener(
+        "dragleave",
+        function() {
+
+            dropZone.classList.remove("dragging");
+
+        }
+    );
+
+
+    dropZone.addEventListener(
+        "drop",
+        function(event) {
+
+            event.preventDefault();
+
+            dropZone.classList.remove("dragging");
+
+            const file =
+                event.dataTransfer.files[0];
+
+            if (file) {
+                processDGR(file);
+            }
+
+        }
+    );
+
+}
+
+
+/* =========================================================
+   REMOVE FILE
+========================================================= */
+
+if (removeFileButton) {
+
+    removeFileButton.addEventListener(
+        "click",
+        resetApplication
+    );
+
+}
+
+
+/* =========================================================
+   PROCESS DGR
+========================================================= */
+
+function processDGR(file) {
+
+    if (!file) {
+        return;
     }
 
-    if (typeof value === "number") {
+
+    const validExtensions = [
+        ".xlsx",
+        ".xls",
+        ".csv"
+    ];
+
+    const fileName =
+        file.name.toLowerCase();
+
+
+    const valid =
+        validExtensions.some(
+            extension =>
+                fileName.endsWith(extension)
+        );
+
+
+    if (!valid) {
+
+        alert(
+            "Please upload an Excel file (.xlsx / .xls) or CSV file."
+        );
+
+        return;
+    }
+
+
+    setStatus(
+        "Reading DGR and analysing required worksheets..."
+    );
+
+
+    const reader = new FileReader();
+
+
+    reader.onload = function(event) {
 
         try {
 
-            const d =
-                XLSX.SSF.parse_date_code(value);
-
-            if (!d) {
-                return null;
-            }
-
-            return new Date(
-                d.y,
-                d.m - 1,
-                d.d
-            );
-
-        } catch {
-
-            return null;
-
-        }
-    }
-
-
-    if (typeof value === "string") {
-
-        let text =
-            value.trim();
-
-
-        /*
-         * DD/MM/YYYY
-         */
-
-        const slash =
-            text.match(
-                /^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})/
-            );
-
-
-        if (slash) {
-
-            const day =
-                parseInt(slash[1]);
-
-            const month =
-                parseInt(slash[2]);
-
-            const year =
-                parseInt(slash[3]);
-
-
-            const date =
-                new Date(
-                    year,
-                    month - 1,
-                    day
+            const data =
+                new Uint8Array(
+                    event.target.result
                 );
 
 
-            return isNaN(
-                date.getTime()
-            )
-                ? null
-                : date;
+            workbook =
+                XLSX.read(
+                    data,
+                    {
+                        type: "array",
+                        cellDates: true
+                    }
+                );
+
+
+            readRequiredSheets();
+
+            showFileInformation(file);
+
+            updateSheetStatus();
+
+            createDashboard();
+
+            setStatus(
+                "DGR loaded successfully. Dashboard updated."
+            );
 
         }
 
+        catch (error) {
 
-        const parsed =
-            new Date(text);
+            console.error(error);
+
+            setStatus(
+                "Error reading DGR."
+            );
+
+            alert(
+                "There was an error reading this DGR. Please check the Excel file."
+            );
+
+        }
+
+    };
 
 
-        return isNaN(
-            parsed.getTime()
+    reader.onerror = function() {
+
+        setStatus(
+            "Unable to read the uploaded file."
+        );
+
+    };
+
+
+    reader.readAsArrayBuffer(file);
+
+}
+
+
+/* =========================================================
+   READ REQUIRED WORKSHEETS
+========================================================= */
+
+function readRequiredSheets() {
+
+    dgrData.dashboard =
+        readSheet(
+            "Dashboard"
+        );
+
+    dgrData.annual =
+        readSheet(
+            "Annual_KPI"
+        );
+
+    dgrData.daily =
+        readSheet(
+            "Daily_KPI"
+        );
+
+    dgrData.pa =
+        readSheet(
+            "PA"
+        );
+
+    dgrData.curtailment =
+        readSheet(
+            "Curtailment records"
+        );
+
+}
+
+
+/* =========================================================
+   READ SHEET
+========================================================= */
+
+function readSheet(sheetName) {
+
+    const actualSheetName =
+        findSheetName(sheetName);
+
+
+    if (!actualSheetName) {
+
+        console.warn(
+            "Worksheet not found:",
+            sheetName
+        );
+
+        return [];
+
+    }
+
+
+    const worksheet =
+        workbook.Sheets[
+            actualSheetName
+        ];
+
+
+    return XLSX.utils.sheet_to_json(
+        worksheet,
+        {
+            header: 1,
+            defval: null,
+            raw: true
+        }
+    );
+
+}
+
+
+/* =========================================================
+   FIND SHEET
+========================================================= */
+
+function findSheetName(requiredName) {
+
+    if (!workbook) {
+        return null;
+    }
+
+
+    const exact =
+        workbook.SheetNames.find(
+            name =>
+                name.trim() ===
+                requiredName
+        );
+
+
+    if (exact) {
+        return exact;
+    }
+
+
+    const insensitive =
+        workbook.SheetNames.find(
+            name =>
+                name.trim().toLowerCase() ===
+                requiredName.toLowerCase()
+        );
+
+
+    return insensitive || null;
+}
+
+
+/* =========================================================
+   FILE INFORMATION
+========================================================= */
+
+function showFileInformation(file) {
+
+    const fileInfo =
+        getElement("fileInfo");
+
+    const fileName =
+        getElement("fileName");
+
+    const fileDetails =
+        getElement("fileDetails");
+
+
+    if (fileInfo) {
+        fileInfo.classList.remove("hidden");
+    }
+
+
+    if (fileName) {
+        fileName.textContent =
+            file.name;
+    }
+
+
+    if (fileDetails) {
+
+        fileDetails.textContent =
+            `${(
+                file.size /
+                1024 /
+                1024
+            ).toFixed(2)} MB • ` +
+            `${workbook.SheetNames.length} worksheets`;
+    }
+
+}
+
+
+/* =========================================================
+   SHEET STATUS
+========================================================= */
+
+function updateSheetStatus() {
+
+    updateSingleSheetStatus(
+        "dashboardSheetStatus",
+        "Dashboard"
+    );
+
+    updateSingleSheetStatus(
+        "annualSheetStatus",
+        "Annual_KPI"
+    );
+
+    updateSingleSheetStatus(
+        "dailySheetStatus",
+        "Daily_KPI"
+    );
+
+    updateSingleSheetStatus(
+        "paSheetStatus",
+        "PA"
+    );
+
+    updateSingleSheetStatus(
+        "curtailmentSheetStatus",
+        "Curtailment records"
+    );
+
+
+    const preview =
+        getElement("data-preview");
+
+    if (preview) {
+        preview.classList.remove("hidden");
+    }
+
+}
+
+
+function updateSingleSheetStatus(
+    elementId,
+    sheetName
+) {
+
+    const element =
+        getElement(elementId);
+
+
+    if (!element) {
+        return;
+    }
+
+
+    const found =
+        findSheetName(sheetName);
+
+
+    if (found) {
+
+        element.textContent =
+            "Loaded";
+
+        element.style.color =
+            "#27a5ad";
+
+    }
+
+    else {
+
+        element.textContent =
+            "Not found";
+
+        element.style.color =
+            "#c15b5b";
+
+    }
+
+}
+
+
+/* =========================================================
+   CREATE DASHBOARD
+========================================================= */
+
+function createDashboard() {
+
+    updateKPICards();
+
+    createPAChart();
+
+    createCurtailmentChart();
+
+    createPRChart();
+
+    createOperatingHoursChart();
+
+    createSystemLossChart();
+
+    createEnergyChart();
+
+}
+
+
+/* =========================================================
+   KPI CARDS
+========================================================= */
+
+function updateKPICards() {
+
+    const daily =
+        dgrData.daily;
+
+
+    /* -----------------------------------------------
+       PR
+    ------------------------------------------------ */
+
+    const prValues =
+        getColumnValues(
+            daily,
+            21
+        );
+
+
+    const latestPR =
+        getLatestNumericValue(
+            prValues
+        );
+
+
+    setText(
+        "dashboardPR",
+        formatPercent(
+            latestPR
         )
-            ? null
-            : parsed;
+    );
+
+
+    /* -----------------------------------------------
+       OPERATING HOURS
+    ------------------------------------------------ */
+
+    const operatingValues =
+        getColumnValues(
+            daily,
+            8
+        );
+
+
+    const latestOperating =
+        getLatestNumericValue(
+            operatingValues
+        );
+
+
+    setText(
+        "dashboardOperating",
+        latestOperating !== null
+            ? `${latestOperating.toFixed(2)} h`
+            : "—"
+    );
+
+
+    /* -----------------------------------------------
+       SYSTEM LOSS
+    ------------------------------------------------ */
+
+    const lossValues =
+        getColumnValues(
+            daily,
+            29
+        );
+
+
+    const latestLoss =
+        getLatestNumericValue(
+            lossValues
+        );
+
+
+    setText(
+        "dashboardLoss",
+        formatPercent(
+            latestLoss
+        )
+    );
+
+
+    /* -----------------------------------------------
+       PA
+    ------------------------------------------------ */
+
+    const paInfo =
+        calculatePAStatistics(
+            dgrData.pa
+        );
+
+
+    setText(
+        "dashboardPA",
+        paInfo.availability !== null
+            ? `${paInfo.availability.toFixed(2)}%`
+            : "—"
+    );
+
+
+    /* -----------------------------------------------
+       CURTAILMENT
+    ------------------------------------------------ */
+
+    const curtailment =
+        extractCurtailmentData(
+            dgrData.curtailment
+        );
+
+
+    const totalCurtailment =
+        curtailment.values.reduce(
+            (sum, value) =>
+                sum +
+                (
+                    Number.isFinite(value)
+                        ? value
+                        : 0
+                ),
+            0
+        );
+
+
+    setText(
+        "dashboardCurtailment",
+        Number.isFinite(
+            totalCurtailment
+        )
+            ? `${totalCurtailment.toFixed(2)} MWh`
+            : "—"
+    );
+
+
+    /* -----------------------------------------------
+       MEASURED ENERGY
+    ------------------------------------------------ */
+
+    const energy =
+        extractAnnualEnergy(
+            dgrData.annual
+        );
+
+
+    const measuredTotal =
+        energy.measured.reduce(
+            (sum, value) =>
+                sum +
+                (
+                    Number.isFinite(value)
+                        ? value
+                        : 0
+                ),
+            0
+        );
+
+
+    setText(
+        "dashboardMeasured",
+        Number.isFinite(
+            measuredTotal
+        )
+            ? `${measuredTotal.toFixed(2)}`
+            : "—"
+    );
+
+}
+
+
+/* =========================================================
+   PLANT AVAILABILITY CHART
+========================================================= */
+
+function createPAChart() {
+
+    destroyChart(
+        "paChart"
+    );
+
+
+    const pa =
+        extractPAData(
+            dgrData.pa
+        );
+
+
+    const canvas =
+        getElement("paChart");
+
+
+    if (!canvas) {
+        return;
+    }
+
+
+    if (
+        pa.labels.length === 0
+    ) {
+
+        showChartMessage(
+            canvas,
+            "No PA breakdown records found."
+        );
+
+        return;
+    }
+
+
+    /*
+       Chart.js horizontal floating bars.
+
+       Each breakdown becomes:
+
+       start timestamp → end timestamp
+    */
+
+
+    const labels =
+        pa.labels;
+
+
+    const data =
+        pa.intervals;
+
+
+    charts.paChart =
+        new Chart(
+            canvas,
+            {
+
+                type: "bar",
+
+                data: {
+
+                    labels: labels,
+
+                    datasets: [
+
+                        {
+                            label:
+                                "Breakdown Duration",
+
+                            data: data,
+
+                            backgroundColor:
+                                "rgba(39,165,173,0.65)",
+
+                            borderColor:
+                                "#27a5ad",
+
+                            borderWidth: 1,
+
+                            borderRadius: 4
+                        }
+
+                    ]
+
+                },
+
+                options: {
+
+                    responsive: true,
+
+                    maintainAspectRatio: false,
+
+                    indexAxis: "y",
+
+                    interaction: {
+
+                        mode: "nearest",
+
+                        intersect: false
+
+                    },
+
+                    plugins: {
+
+                        legend: {
+                            display: false
+                        },
+
+                        tooltip: {
+
+                            callbacks: {
+
+                                label:
+                                    function(context) {
+
+                                        const index =
+                                            context.dataIndex;
+
+                                        const record =
+                                            pa.records[index];
+
+                                        return [
+                                            `Start: ${record.startText}`,
+                                            `End: ${record.endText}`,
+                                            `Duration: ${record.durationText}`
+                                        ];
+
+                                    }
+
+                            }
+
+                        },
+
+                        zoom: {
+
+                            pan: {
+                                enabled: true,
+                                mode: "y"
+                            },
+
+                            zoom: {
+
+                                wheel: {
+                                    enabled: true
+                                },
+
+                                pinch: {
+                                    enabled: true
+                                },
+
+                                mode: "y"
+                            }
+
+                        }
+
+                    },
+
+                    scales: {
+
+                        x: {
+
+                            title: {
+
+                                display: true,
+
+                                text:
+                                    "Duration (hours)"
+
+                            },
+
+                            beginAtZero: true
+
+                        },
+
+                        y: {
+
+                            title: {
+
+                                display: true,
+
+                                text:
+                                    "Breakdown / Equipment"
+
+                            }
+
+                        }
+
+                    }
+
+                }
+
+            }
+        );
+
+}
+
+
+/* =========================================================
+   CURTAILMENT CHART
+========================================================= */
+
+function createCurtailmentChart() {
+
+    destroyChart(
+        "curtailmentChart"
+    );
+
+
+    const data =
+        extractCurtailmentData(
+            dgrData.curtailment
+        );
+
+
+    const canvas =
+        getElement(
+            "curtailmentChart"
+        );
+
+
+    if (!canvas) {
+        return;
+    }
+
+
+    if (
+        data.labels.length === 0
+    ) {
+
+        showChartMessage(
+            canvas,
+            "No curtailment records found."
+        );
+
+        return;
+    }
+
+
+    charts.curtailmentChart =
+        new Chart(
+            canvas,
+            {
+
+                type: "line",
+
+                data: {
+
+                    labels:
+                        data.labels,
+
+                    datasets: [
+
+                        {
+                            label:
+                                "Curtailment Loss",
+
+                            data:
+                                data.values,
+
+                            borderColor:
+                                "#27a5ad",
+
+                            backgroundColor:
+                                "rgba(39,165,173,0.10)",
+
+                            borderWidth: 2,
+
+                            pointRadius: 3,
+
+                            pointHoverRadius: 6,
+
+                            fill: true,
+
+                            tension: 0.25
+                        }
+
+                    ]
+
+                },
+
+                options: {
+
+                    responsive: true,
+
+                    maintainAspectRatio: false,
+
+                    interaction: {
+
+                        mode: "index",
+
+                        intersect: false
+
+                    },
+
+                    plugins: {
+
+                        legend: {
+                            display: true
+                        },
+
+                        tooltip: {
+
+                            callbacks: {
+
+                                label:
+                                    function(context) {
+
+                                        return (
+                                            "Curtailment Loss: " +
+                                            Number(
+                                                context.raw
+                                            ).toFixed(2) +
+                                            " MWh"
+                                        );
+
+                                    }
+
+                            }
+
+                        },
+
+                        zoom: {
+
+                            pan: {
+                                enabled: true,
+                                mode: "x"
+                            },
+
+                            zoom: {
+
+                                wheel: {
+                                    enabled: true
+                                },
+
+                                pinch: {
+                                    enabled: true
+                                },
+
+                                mode: "x"
+                            }
+
+                        }
+
+                    },
+
+                    scales: {
+
+                        x: {
+
+                            title: {
+
+                                display: true,
+
+                                text: "Date"
+
+                            }
+
+                        },
+
+                        y: {
+
+                            beginAtZero: true,
+
+                            title: {
+
+                                display: true,
+
+                                text:
+                                    "Curtailment Loss (MWh)"
+
+                            }
+
+                        }
+
+                    }
+
+                }
+
+            }
+        );
+
+}
+
+
+/* =========================================================
+   PR SCATTER PLOT
+========================================================= */
+
+function createPRChart() {
+
+    destroyChart(
+        "prChart"
+    );
+
+
+    const data =
+        extractDailyColumn(
+            dgrData.daily,
+            21
+        );
+
+
+    const canvas =
+        getElement(
+            "prChart"
+        );
+
+
+    if (!canvas) {
+        return;
+    }
+
+
+    const points =
+        data.values
+            .map(
+                function(value, index) {
+
+                    if (
+                        !Number.isFinite(
+                            value
+                        )
+                    ) {
+                        return null;
+                    }
+
+
+                    return {
+
+                        x:
+                            index + 1,
+
+                        y:
+                            value
+
+                    };
+
+                }
+            )
+            .filter(
+                point =>
+                    point !== null
+            );
+
+
+    if (points.length === 0) {
+
+        showChartMessage(
+            canvas,
+            "No PR values found in Daily_KPI column V."
+        );
+
+        return;
+    }
+
+
+    charts.prChart =
+        new Chart(
+            canvas,
+            {
+
+                type: "scatter",
+
+                data: {
+
+                    datasets: [
+
+                        {
+                            label:
+                                "Performance Ratio",
+
+                            data:
+                                points,
+
+                            backgroundColor:
+                                "#27a5ad",
+
+                            borderColor:
+                                "#27a5ad",
+
+                            pointRadius: 5,
+
+                            pointHoverRadius: 8
+                        }
+
+                    ]
+
+                },
+
+                options: {
+
+                    responsive: true,
+
+                    maintainAspectRatio: false,
+
+                    plugins: {
+
+                        tooltip: {
+
+                            callbacks: {
+
+                                label:
+                                    function(context) {
+
+                                        return (
+                                            `Day ${context.parsed.x}: ` +
+                                            `${context.parsed.y.toFixed(2)}%`
+                                        );
+
+                                    }
+
+                            }
+
+                        },
+
+                        zoom: {
+
+                            pan: {
+                                enabled: true,
+                                mode: "xy"
+                            },
+
+                            zoom: {
+
+                                wheel: {
+                                    enabled: true
+                                },
+
+                                pinch: {
+                                    enabled: true
+                                },
+
+                                mode: "xy"
+                            }
+
+                        }
+
+                    },
+
+                    scales: {
+
+                        x: {
+
+                            type: "linear",
+
+                            title: {
+
+                                display: true,
+
+                                text:
+                                    "Day of Month"
+
+                            },
+
+                            ticks: {
+
+                                precision: 0
+
+                            }
+
+                        },
+
+                        y: {
+
+                            title: {
+
+                                display: true,
+
+                                text:
+                                    "PR (%)"
+
+                            }
+
+                        }
+
+                    }
+
+                }
+
+            }
+        );
+
+}
+
+
+/* =========================================================
+   OPERATING HOURS
+========================================================= */
+
+function createOperatingHoursChart() {
+
+    destroyChart(
+        "operatingChart"
+    );
+
+
+    const data =
+        extractDailyColumn(
+            dgrData.daily,
+            8
+        );
+
+
+    const canvas =
+        getElement(
+            "operatingChart"
+        );
+
+
+    if (!canvas) {
+        return;
+    }
+
+
+    charts.operatingChart =
+        new Chart(
+            canvas,
+            {
+
+                type: "line",
+
+                data: {
+
+                    labels:
+                        data.labels,
+
+                    datasets: [
+
+                        {
+                            label:
+                                "Operating Hours",
+
+                            data:
+                                data.values,
+
+                            borderColor:
+                                "#27a5ad",
+
+                            backgroundColor:
+                                "rgba(39,165,173,0.10)",
+
+                            borderWidth: 2,
+
+                            pointRadius: 3,
+
+                            pointHoverRadius: 6,
+
+                            fill: true,
+
+                            tension: 0.25
+                        }
+
+                    ]
+
+                },
+
+                options: {
+
+                    responsive: true,
+
+                    maintainAspectRatio: false,
+
+                    plugins: {
+
+                        tooltip: {
+
+                            callbacks: {
+
+                                label:
+                                    function(context) {
+
+                                        return (
+                                            "Operating Hours: " +
+                                            Number(
+                                                context.raw
+                                            ).toFixed(2) +
+                                            " h"
+                                        );
+
+                                    }
+
+                            }
+
+                        },
+
+                        zoom: {
+
+                            pan: {
+                                enabled: true,
+                                mode: "x"
+                            },
+
+                            zoom: {
+
+                                wheel: {
+                                    enabled: true
+                                },
+
+                                pinch: {
+                                    enabled: true
+                                },
+
+                                mode: "x"
+                            }
+
+                        }
+
+                    },
+
+                    scales: {
+
+                        x: {
+
+                            title: {
+
+                                display: true,
+
+                                text:
+                                    "Day of Month"
+
+                            }
+
+                        },
+
+                        y: {
+
+                            beginAtZero: true,
+
+                            title: {
+
+                                display: true,
+
+                                text:
+                                    "Operating Hours"
+
+                            }
+
+                        }
+
+                    }
+
+                }
+
+            }
+        );
+
+}
+
+
+/* =========================================================
+   SYSTEM LOSSES
+========================================================= */
+
+function createSystemLossChart() {
+
+    destroyChart(
+        "systemLossChart"
+    );
+
+
+    const data =
+        extractDailyColumn(
+            dgrData.daily,
+            29
+        );
+
+
+    const canvas =
+        getElement(
+            "systemLossChart"
+        );
+
+
+    if (!canvas) {
+        return;
+    }
+
+
+    charts.systemLossChart =
+        new Chart(
+            canvas,
+            {
+
+                type: "line",
+
+                data: {
+
+                    labels:
+                        data.labels,
+
+                    datasets: [
+
+                        {
+                            label:
+                                "System Losses",
+
+                            data:
+                                data.values,
+
+                            borderColor:
+                                "#27a5ad",
+
+                            backgroundColor:
+                                "rgba(39,165,173,0.12)",
+
+                            borderWidth: 2,
+
+                            pointRadius: 3,
+
+                            pointHoverRadius: 6,
+
+                            fill: true,
+
+                            tension: 0.25
+                        }
+
+                    ]
+
+                },
+
+                options: {
+
+                    responsive: true,
+
+                    maintainAspectRatio: false,
+
+                    plugins: {
+
+                        tooltip: {
+
+                            callbacks: {
+
+                                label:
+                                    function(context) {
+
+                                        return (
+                                            "System Loss: " +
+                                            Number(
+                                                context.raw
+                                            ).toFixed(2) +
+                                            "%"
+                                        );
+
+                                    }
+
+                            }
+
+                        },
+
+                        zoom: {
+
+                            pan: {
+                                enabled: true,
+                                mode: "x"
+                            },
+
+                            zoom: {
+
+                                wheel: {
+                                    enabled: true
+                                },
+
+                                pinch: {
+                                    enabled: true
+                                },
+
+                                mode: "x"
+                            }
+
+                        }
+
+                    },
+
+                    scales: {
+
+                        x: {
+
+                            title: {
+
+                                display: true,
+
+                                text:
+                                    "Day of Month"
+
+                            }
+
+                        },
+
+                        y: {
+
+                            title: {
+
+                                display: true,
+
+                                text:
+                                    "System Losses (%)"
+
+                            }
+
+                        }
+
+                    }
+
+                }
+
+            }
+        );
+
+}
+
+
+/* =========================================================
+   ENERGY CHART
+========================================================= */
+
+function createEnergyChart() {
+
+    destroyChart(
+        "energyChart"
+    );
+
+
+    const energy =
+        extractAnnualEnergy(
+            dgrData.annual
+        );
+
+
+    const canvas =
+        getElement(
+            "energyChart"
+        );
+
+
+    if (!canvas) {
+        return;
+    }
+
+
+    if (
+        energy.labels.length === 0
+    ) {
+
+        showChartMessage(
+            canvas,
+            "No Annual_KPI energy data found."
+        );
+
+        return;
+    }
+
+
+    charts.energyChart =
+        new Chart(
+            canvas,
+            {
+
+                type: "bar",
+
+                data: {
+
+                    labels:
+                        energy.labels,
+
+                    datasets: [
+
+                        {
+                            label:
+                                "Budgeted Energy",
+
+                            data:
+                                energy.budget,
+
+                            backgroundColor:
+                                "rgba(39,165,173,0.70)",
+
+                            borderColor:
+                                "#27a5ad",
+
+                            borderWidth: 1,
+
+                            borderRadius: 3
+                        },
+
+
+                        {
+                            label:
+                                "Measured Energy",
+
+                            data:
+                                energy.measured,
+
+                            backgroundColor:
+                                "rgba(23,37,42,0.72)",
+
+                            borderColor:
+                                "#17252a",
+
+                            borderWidth: 1,
+
+                            borderRadius: 3
+                        }
+
+                    ]
+
+                },
+
+                options: {
+
+                    responsive: true,
+
+                    maintainAspectRatio: false,
+
+                    interaction: {
+
+                        mode: "index",
+
+                        intersect: false
+
+                    },
+
+                    plugins: {
+
+                        tooltip: {
+
+                            callbacks: {
+
+                                label:
+                                    function(context) {
+
+                                        return (
+                                            context.dataset.label +
+                                            ": " +
+                                            Number(
+                                                context.raw
+                                            ).toFixed(2)
+                                        );
+
+                                    }
+
+                            }
+
+                        },
+
+                        zoom: {
+
+                            pan: {
+                                enabled: true,
+                                mode: "x"
+                            },
+
+                            zoom: {
+
+                                wheel: {
+                                    enabled: true
+                                },
+
+                                pinch: {
+                                    enabled: true
+                                },
+
+                                mode: "x"
+                            }
+
+                        }
+
+                    },
+
+                    scales: {
+
+                        x: {
+
+                            title: {
+
+                                display: true,
+
+                                text:
+                                    "Month"
+
+                            }
+
+                        },
+
+                        y: {
+
+                            beginAtZero: true,
+
+                            title: {
+
+                                display: true,
+
+                                text:
+                                    "Energy"
+
+                            }
+
+                        }
+
+                    }
+
+                }
+
+            }
+        );
+
+
+    updateEnergySummary(
+        energy
+    );
+
+}
+
+
+/* =========================================================
+   EXTRACT DAILY COLUMN
+========================================================= */
+
+function extractDailyColumn(
+    rows,
+    columnIndex
+) {
+
+    if (
+        !rows ||
+        rows.length === 0
+    ) {
+
+        return {
+            labels: [],
+            values: []
+        };
+
+    }
+
+
+    const start =
+        findDataStartRow(
+            rows
+        );
+
+
+    const labels = [];
+
+    const values = [];
+
+
+    for (
+        let i = start;
+        i < rows.length;
+        i++
+    ) {
+
+        const row =
+            rows[i];
+
+
+        if (
+            !row ||
+            row.length <= columnIndex
+        ) {
+            continue;
+        }
+
+
+        const raw =
+            row[columnIndex];
+
+
+        const value =
+            parseNumber(
+                raw
+            );
+
+
+        if (
+            value === null
+        ) {
+            continue;
+        }
+
+
+        labels.push(
+            getDayLabel(
+                row,
+                i - start + 1
+            )
+        );
+
+
+        values.push(
+            value
+        );
+
+    }
+
+
+    return {
+        labels,
+        values
+    };
+
+}
+
+
+/* =========================================================
+   GET COLUMN VALUES
+========================================================= */
+
+function getColumnValues(
+    rows,
+    columnIndex
+) {
+
+    if (!rows) {
+        return [];
+    }
+
+
+    return rows
+        .slice(
+            findDataStartRow(rows)
+        )
+        .map(
+            row =>
+                parseNumber(
+                    row?.[columnIndex]
+                )
+        )
+        .filter(
+            value =>
+                value !== null
+        );
+
+}
+
+
+/* =========================================================
+   ANNUAL ENERGY
+========================================================= */
+
+function extractAnnualEnergy(
+    rows
+) {
+
+    const result = {
+
+        labels: [],
+
+        budget: [],
+
+        measured: []
+
+    };
+
+
+    if (
+        !rows ||
+        rows.length === 0
+    ) {
+
+        return result;
+    }
+
+
+    /*
+       E = index 4
+       F = index 5
+
+       Rows 10–21 in Excel
+       = indexes 9–20
+    */
+
+
+    for (
+        let excelRow = 10;
+        excelRow <= 21;
+        excelRow++
+    ) {
+
+        const index =
+            excelRow - 1;
+
+
+        const row =
+            rows[index];
+
+
+        if (!row) {
+            continue;
+        }
+
+
+        const budget =
+            parseNumber(
+                row[4]
+            );
+
+
+        const measured =
+            parseNumber(
+                row[5]
+            );
+
+
+        result.labels.push(
+            getMonthLabel(
+                row,
+                excelRow
+            )
+        );
+
+
+        result.budget.push(
+            budget
+        );
+
+
+        result.measured.push(
+            measured
+        );
+
+    }
+
+
+    return result;
+
+}
+
+
+/* =========================================================
+   PA DATA
+========================================================= */
+
+function extractPAData(
+    rows
+) {
+
+    const result = {
+
+        labels: [],
+
+        intervals: [],
+
+        records: []
+
+    };
+
+
+    if (
+        !rows ||
+        rows.length === 0
+    ) {
+
+        return result;
+    }
+
+
+    const header =
+        findHeaderRow(
+            rows,
+            [
+                "start",
+                "breakdown",
+                "from"
+            ]
+        );
+
+
+    let startIndex =
+        header !== -1
+            ? header + 1
+            : 1;
+
+
+    for (
+        let i = startIndex;
+        i < rows.length;
+        i++
+    ) {
+
+        const row =
+            rows[i];
+
+
+        if (
+            !row ||
+            row.length === 0
+        ) {
+            continue;
+        }
+
+
+        const start =
+            findTimeValue(
+                row,
+                [
+                    "start",
+                    "breakdown start",
+                    "from"
+                ]
+            );
+
+
+        const end =
+            findTimeValue(
+                row,
+                [
+                    "end",
+                    "breakdown end",
+                    "to"
+                ]
+            );
+
+
+        if (
+            start === null ||
+            end === null
+        ) {
+            continue;
+        }
+
+
+        const durationHours =
+            calculateDuration(
+                start,
+                end
+            );
+
+
+        if (
+            durationHours === null
+        ) {
+            continue;
+        }
+
+
+        const equipment =
+            findTextValue(
+                row,
+                [
+                    "equipment",
+                    "asset",
+                    "machine",
+                    "name"
+                ]
+            ) ||
+            `Breakdown ${result.records.length + 1}`;
+
+
+        result.labels.push(
+            equipment
+        );
+
+
+        result.intervals.push(
+            durationHours
+        );
+
+
+        result.records.push({
+
+            equipment,
+
+            startText:
+                formatDateTime(
+                    start
+                ),
+
+            endText:
+                formatDateTime(
+                    end
+                ),
+
+            durationText:
+                formatDuration(
+                    durationHours
+                )
+
+        });
+
+    }
+
+
+    return result;
+
+}
+
+
+/* =========================================================
+   PA STATISTICS
+========================================================= */
+
+function calculatePAStatistics(
+    rows
+) {
+
+    const pa =
+        extractPAData(
+            rows
+        );
+
+
+    if (
+        pa.records.length === 0
+    ) {
+
+        return {
+            availability: null
+        };
+
+    }
+
+
+    const totalDowntime =
+        pa.intervals.reduce(
+            (sum, value) =>
+                sum + value,
+            0
+        );
+
+
+    /*
+       Availability is calculated from the
+       period represented by the PA records.
+
+       This is a fallback calculation.
+    */
+
+    const periodHours =
+        24 *
+        Math.max(
+            1,
+            pa.records.length
+        );
+
+
+    const availability =
+        Math.max(
+            0,
+            Math.min(
+                100,
+                (
+                    1 -
+                    (
+                        totalDowntime /
+                        periodHours
+                    )
+                ) *
+                100
+            )
+        );
+
+
+    return {
+        availability
+    };
+
+}
+
+
+/* =========================================================
+   CURTAILMENT DATA
+========================================================= */
+
+function extractCurtailmentData(
+    rows
+) {
+
+    const result = {
+
+        labels: [],
+
+        values: []
+
+    };
+
+
+    if (
+        !rows ||
+        rows.length === 0
+    ) {
+
+        return result;
+    }
+
+
+    const headerRow =
+        findHeaderRow(
+            rows,
+            [
+                "curtail",
+                "loss",
+                "energy"
+            ]
+        );
+
+
+    const start =
+        headerRow >= 0
+            ? headerRow + 1
+            : 1;
+
+
+    for (
+        let i = start;
+        i < rows.length;
+        i++
+    ) {
+
+        const row =
+            rows[i];
+
+
+        if (
+            !row ||
+            row.length === 0
+        ) {
+            continue;
+        }
+
+
+        const date =
+            findDateValue(
+                row
+            );
+
+
+        const loss =
+            findCurtailmentNumber(
+                row
+            );
+
+
+        if (
+            loss === null
+        ) {
+            continue;
+        }
+
+
+        result.labels.push(
+            date !== null
+                ? formatDate(
+                    date
+                )
+                : `Record ${i - start + 1}`
+        );
+
+
+        result.values.push(
+            loss
+        );
+
+    }
+
+
+    return result;
+
+}
+
+
+/* =========================================================
+   FIND CURTAILMENT NUMBER
+========================================================= */
+
+function findCurtailmentNumber(
+    row
+) {
+
+    /*
+       Try headers first.
+    */
+
+    const possibleHeaders = [
+        "loss",
+        "curtailment loss",
+        "energy loss",
+        "loss mwh",
+        "curtailment",
+        "curtailed energy",
+        "mwh"
+    ];
+
+
+    const headerIndex =
+        findColumnByHeader(
+            dgrData.curtailment,
+            possibleHeaders
+        );
+
+
+    if (
+        headerIndex !== -1 &&
+        row[headerIndex] !== undefined
+    ) {
+
+        return parseNumber(
+            row[headerIndex]
+        );
+
+    }
+
+
+    /*
+       Fallback:
+       use the last numeric value in the row.
+    */
+
+    for (
+        let i = row.length - 1;
+        i >= 0;
+        i--
+    ) {
+
+        const number =
+            parseNumber(
+                row[i]
+            );
+
+
+        if (
+            number !== null
+        ) {
+
+            return number;
+
+        }
 
     }
 
 
     return null;
+
 }
 
 
 /* =========================================================
-   DATE FORMATTING
-   ========================================================= */
+   FIND HEADER ROW
+========================================================= */
 
-function isoDate(date) {
+function findHeaderRow(
+    rows,
+    keywords
+) {
 
-    if (!date) {
-        return "";
+    const maxRows =
+        Math.min(
+            rows.length,
+            30
+        );
+
+
+    for (
+        let i = 0;
+        i < maxRows;
+        i++
+    ) {
+
+        const row =
+            rows[i];
+
+
+        if (!row) {
+            continue;
+        }
+
+
+        const text =
+            row
+                .map(
+                    cell =>
+                        String(
+                            cell ?? ""
+                        ).toLowerCase()
+                )
+                .join(" ");
+
+
+        const found =
+            keywords.some(
+                keyword =>
+                    text.includes(
+                        keyword.toLowerCase()
+                    )
+            );
+
+
+        if (found) {
+            return i;
+        }
+
     }
 
-    const year =
-        date.getFullYear();
 
-    const month =
-        String(
-            date.getMonth() + 1
-        ).padStart(2, "0");
+    return -1;
 
-    const day =
-        String(
-            date.getDate()
-        ).padStart(2, "0");
-
-    return `${year}-${month}-${day}`;
 }
 
 
-function shortDate(date) {
+/* =========================================================
+   FIND COLUMN BY HEADER
+========================================================= */
 
-    if (!date) {
-        return "";
+function findColumnByHeader(
+    rows,
+    possibleHeaders
+) {
+
+    const headerRow =
+        findHeaderRow(
+            rows,
+            possibleHeaders
+        );
+
+
+    if (
+        headerRow === -1
+    ) {
+        return -1;
     }
+
+
+    const row =
+        rows[headerRow];
+
+
+    for (
+        let i = 0;
+        i < row.length;
+        i++
+    ) {
+
+        const text =
+            String(
+                row[i] ?? ""
+            ).toLowerCase().trim();
+
+
+        for (
+            const header
+            of possibleHeaders
+        ) {
+
+            if (
+                text ===
+                header.toLowerCase()
+            ) {
+
+                return i;
+
+            }
+
+        }
+
+    }
+
+
+    return -1;
+
+}
+
+
+/* =========================================================
+   FIND TEXT VALUE
+========================================================= */
+
+function findTextValue(
+    row,
+    keywords
+) {
+
+    for (
+        const cell
+        of row
+    ) {
+
+        const text =
+            String(
+                cell ?? ""
+            ).trim();
+
+
+        if (!text) {
+            continue;
+        }
+
+
+        const lower =
+            text.toLowerCase();
+
+
+        const found =
+            keywords.some(
+                keyword =>
+                    lower.includes(
+                        keyword.toLowerCase()
+                    )
+            );
+
+
+        if (found) {
+            return text;
+        }
+
+    }
+
+
+    return null;
+
+}
+
+
+/* =========================================================
+   FIND TIME VALUE
+========================================================= */
+
+function findTimeValue(
+    row,
+    keywords
+) {
+
+    for (
+        const cell
+        of row
+    ) {
+
+        if (
+            cell instanceof Date
+        ) {
+            return cell;
+        }
+
+
+        if (
+            typeof cell === "number" &&
+            cell >= 0 &&
+            cell <= 1
+        ) {
+
+            const date =
+                XLSX.SSF.parse_date_code(
+                    cell
+                );
+
+
+            if (date) {
+
+                return new Date(
+                    date.y,
+                    date.m - 1,
+                    date.d,
+                    date.H,
+                    date.M,
+                    date.S
+                );
+
+            }
+
+        }
+
+
+        if (
+            typeof cell === "string"
+        ) {
+
+            const parsed =
+                parseDateString(
+                    cell
+                );
+
+
+            if (parsed) {
+                return parsed;
+            }
+
+        }
+
+    }
+
+
+    return null;
+
+}
+
+
+/* =========================================================
+   FIND DATE
+========================================================= */
+
+function findDateValue(
+    row
+) {
+
+    for (
+        const cell
+        of row
+    ) {
+
+        if (
+            cell instanceof Date
+        ) {
+
+            return cell;
+
+        }
+
+
+        if (
+            typeof cell === "number" &&
+            cell > 20000
+        ) {
+
+            const date =
+                XLSX.SSF.parse_date_code(
+                    cell
+                );
+
+
+            if (date) {
+
+                return new Date(
+                    date.y,
+                    date.m - 1,
+                    date.d
+                );
+
+            }
+
+        }
+
+
+        if (
+            typeof cell === "string"
+        ) {
+
+            const parsed =
+                parseDateString(
+                    cell
+                );
+
+
+            if (parsed) {
+                return parsed;
+            }
+
+        }
+
+    }
+
+
+    return null;
+
+}
+
+
+/* =========================================================
+   DATE PARSER
+========================================================= */
+
+function parseDateString(
+    value
+) {
+
+    const text =
+        String(
+            value
+        ).trim();
+
+
+    if (!text) {
+        return null;
+    }
+
+
+    const date =
+        new Date(
+            text
+        );
+
+
+    if (
+        !Number.isNaN(
+            date.getTime()
+        )
+    ) {
+
+        return date;
+
+    }
+
+
+    return null;
+
+}
+
+
+/* =========================================================
+   CALCULATE DURATION
+========================================================= */
+
+function calculateDuration(
+    start,
+    end
+) {
+
+    if (
+        !(start instanceof Date) ||
+        !(end instanceof Date)
+    ) {
+
+        return null;
+
+    }
+
+
+    let difference =
+        end.getTime() -
+        start.getTime();
+
+
+    /*
+       If only time is supplied and end
+       appears before start, assume it
+       crossed midnight.
+    */
+
+    if (
+        difference < 0
+    ) {
+
+        difference +=
+            24 *
+            60 *
+            60 *
+            1000;
+
+    }
+
+
+    return (
+        difference /
+        (
+            1000 *
+            60 *
+            60
+        )
+    );
+
+}
+
+
+/* =========================================================
+   FORMAT DURATION
+========================================================= */
+
+function formatDuration(
+    hours
+) {
+
+    const totalMinutes =
+        Math.round(
+            hours * 60
+        );
+
+
+    const h =
+        Math.floor(
+            totalMinutes / 60
+        );
+
+
+    const m =
+        totalMinutes % 60;
+
+
+    return `${h}h ${m}m`;
+
+}
+
+
+/* =========================================================
+   FORMAT DATE TIME
+========================================================= */
+
+function formatDateTime(
+    date
+) {
+
+    if (
+        !(date instanceof Date)
+    ) {
+
+        return "—";
+
+    }
+
+
+    return date.toLocaleString(
+        "en-IN",
+        {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit"
+        }
+    );
+
+}
+
+
+/* =========================================================
+   FORMAT DATE
+========================================================= */
+
+function formatDate(
+    date
+) {
+
+    if (
+        !(date instanceof Date)
+    ) {
+
+        return String(
+            date
+        );
+
+    }
+
 
     return date.toLocaleDateString(
         "en-IN",
@@ -201,343 +2951,172 @@ function shortDate(date) {
             month: "short"
         }
     );
+
 }
 
 
 /* =========================================================
-   FIND COLUMN
-   ========================================================= */
+   MONTH LABEL
+========================================================= */
 
-function findColumn(
-    headers,
-    candidates
+function getMonthLabel(
+    row,
+    excelRow
 ) {
 
-    const cleanHeaders =
-        headers.map(
-            h =>
-                String(h)
-                    .trim()
-                    .toLowerCase()
-        );
-
-
     /*
-     * First look for exact matches.
-     */
+       Try to find a month name in the row.
+    */
 
     for (
-        const candidate
-        of candidates
+        const cell
+        of row
     ) {
 
-        const index =
-            cleanHeaders.indexOf(
-                candidate.toLowerCase()
-            );
+        if (
+            typeof cell === "string"
+        ) {
+
+            const text =
+                cell.trim();
 
 
-        if (index !== -1) {
+            if (
+                text.length >= 3 &&
+                text.length <= 15
+            ) {
 
-            return headers[index];
+                return text;
 
-        }
-
-    }
-
-
-    /*
-     * Then look for partial matches.
-     */
-
-    for (
-        const candidate
-        of candidates
-    ) {
-
-        const search =
-            candidate
-                .toLowerCase()
-                .replace(/\s/g, "");
-
-
-        const index =
-            cleanHeaders.findIndex(
-                header =>
-                    header
-                        .replace(/\s/g, "")
-                        .includes(search)
-            );
-
-
-        if (index !== -1) {
-
-            return headers[index];
-
-        }
-
-    }
-
-
-    return null;
-}
-
-
-/* =========================================================
-   DETECT COLUMNS
-   ========================================================= */
-
-function detectColumns(headers) {
-
-    return {
-
-        date:
-            findColumn(
-                headers,
-                [
-                    "Date",
-                    "date"
-                ]
-            ),
-
-        pa:
-            findColumn(
-                headers,
-                [
-                    "PA(%)",
-                    "PA (%)",
-                    "Plant Availability (%)",
-                    "Plant Availability",
-                    "PA"
-                ]
-            ),
-
-        pr:
-            findColumn(
-                headers,
-                [
-                    "PR(%)",
-                    "PR (%)",
-                    "Performance Ratio (%)",
-                    "Performance Ratio",
-                    "PR"
-                ]
-            ),
-
-        ghi:
-            findColumn(
-                headers,
-                [
-                    "GHI-UP (KWh/m2)",
-                    "GHI-UP(KWh/m2)",
-                    "GHI",
-                    "GHI-UP"
-                ]
-            ),
-
-        poaUp:
-            findColumn(
-                headers,
-                [
-                    "POA-UP(KWh/m2)",
-                    "POA-UP (KWh/m2)",
-                    "POA-UP",
-                    "POA Up",
-                    "GII",
-                    "GII-UP"
-                ]
-            ),
-
-        poaDown:
-            findColumn(
-                headers,
-                [
-                    "POA-Down(KWh/m2)",
-                    "POA-Down (KWh/m2)",
-                    "POA-Down",
-                    "POA Down"
-                ]
-            ),
-
-        measured:
-            findColumn(
-                headers,
-                [
-                    "Inv_Exp (kWh)",
-                    "Inv_Exp(kWh)",
-                    "Inv Exp",
-                    "Inverter Export",
-                    "Measured Generation",
-                    "Measured Generation (kWh)"
-                ]
-            ),
-
-        actual:
-            findColumn(
-                headers,
-                [
-                    "220kV_Net_Exp (KWh)",
-                    "220kV_Net_Exp(KWh)",
-                    "220kV Net Export",
-                    "Actual Generation",
-                    "Actual Generation (kWh)",
-                    "Net Export"
-                ]
-            ),
-
-        capacity:
-            findColumn(
-                headers,
-                [
-                    "Firm DC Capacity (MWp)",
-                    "DC Capacity (MWp)",
-                    "Installed DC Capacity",
-                    "Capacity (MWp)"
-                ]
-            )
-
-    };
-}
-
-
-/* =========================================================
-   DETECT HEADER ROW
-   ========================================================= */
-
-function detectHeaderRow(sheet) {
-
-    const matrix =
-        XLSX.utils.sheet_to_json(
-            sheet,
-            {
-                header: 1,
-                defval: null,
-                raw: true
             }
-        );
+
+        }
+
+    }
 
 
     /*
-     * Search first 30 rows.
-     */
+       Fallback.
+    */
+
+    const months = [
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec",
+        "Jan",
+        "Feb",
+        "Mar"
+    ];
+
+
+    return (
+        months[
+            excelRow - 10
+        ] ||
+        `Month ${excelRow - 9}`
+    );
+
+}
+
+
+/* =========================================================
+   DAY LABEL
+========================================================= */
+
+function getDayLabel(
+    row,
+    fallback
+) {
 
     for (
-        let rowIndex = 0;
-        rowIndex <
-        Math.min(
-            matrix.length,
-            30
-        );
-        rowIndex++
+        const cell
+        of row
     ) {
 
-        const row =
-            matrix[rowIndex] || [];
+        if (
+            cell instanceof Date
+        ) {
 
+            return cell.getDate();
 
-        const values =
-            row.map(
-                value =>
-                    String(
-                        value ?? ""
-                    ).trim()
-            );
-
-
-        const lower =
-            values.map(
-                value =>
-                    value.toLowerCase()
-            );
-
-
-        const hasDate =
-            lower.some(
-                value =>
-                    value === "date"
-            );
-
-
-        const hasPA =
-            lower.some(
-                value =>
-                    value.includes("pa")
-            );
-
-
-        const hasPR =
-            lower.some(
-                value =>
-                    value.includes("pr")
-            );
+        }
 
 
         if (
-            hasDate &&
-            (hasPA || hasPR)
+            typeof cell === "number" &&
+            cell >= 1 &&
+            cell <= 31
         ) {
 
-            return rowIndex;
+            return cell;
+
+        }
+
+
+        if (
+            typeof cell === "string"
+        ) {
+
+            const match =
+                cell.match(
+                    /\b([1-9]|[12]\d|3[01])\b/
+                );
+
+
+            if (match) {
+                return match[1];
+            }
 
         }
 
     }
 
 
-    return -1;
+    return fallback;
+
 }
 
 
 /* =========================================================
-   READ SHEET
-   ========================================================= */
+   FIND DATA START
+========================================================= */
 
-function readSheet(sheet) {
+function findDataStartRow(
+    rows
+) {
 
-    const headerRow =
-        detectHeaderRow(sheet);
+    if (
+        !rows ||
+        rows.length === 0
+    ) {
 
-
-    if (headerRow === -1) {
-
-        return null;
+        return 0;
 
     }
 
 
-    const matrix =
-        XLSX.utils.sheet_to_json(
-            sheet,
-            {
-                header: 1,
-                defval: null,
-                raw: true
-            }
-        );
-
-
-    const headers =
-        matrix[
-            headerRow
-        ].map(
-            value =>
-                String(
-                    value ?? ""
-                ).trim()
-        );
-
-
-    const objects = [];
-
+    /*
+       Find a row that appears to contain
+       headers.
+    */
 
     for (
-        let i = headerRow + 1;
-        i < matrix.length;
+        let i = 0;
+        i < Math.min(
+            rows.length,
+            15
+        );
         i++
     ) {
 
         const row =
-            matrix[i];
+            rows[i];
 
 
         if (!row) {
@@ -545,275 +3124,196 @@ function readSheet(sheet) {
         }
 
 
-        const object = {};
-
-
-        headers.forEach(
-            (
-                header,
-                index
-            ) => {
-
-                if (header) {
-
-                    object[header] =
-                        row[index];
-
-                }
-
-            }
-        );
-
-
-        objects.push(
-            object
-        );
-
-    }
-
-
-    return {
-
-        headers,
-
-        rows: objects,
-
-        headerRow
-
-    };
-}
-
-
-/* =========================================================
-   FIND BEST WORKSHEET
-   ========================================================= */
-
-function findBestSheet(workbook) {
-
-    let best = null;
-
-
-    for (
-        const sheetName
-        of workbook.SheetNames
-    ) {
-
-        const sheet =
-            workbook.Sheets[
-                sheetName
-            ];
-
-
-        const result =
-            readSheet(sheet);
-
-
-        if (!result) {
-            continue;
-        }
-
-
-        const columns =
-            detectColumns(
-                result.headers
-            );
-
-
-        let score = 0;
-
-
-        if (columns.date) score += 5;
-        if (columns.pa) score += 3;
-        if (columns.pr) score += 3;
-        if (columns.ghi) score += 2;
-        if (columns.poaUp) score += 2;
-        if (columns.measured) score += 2;
-        if (columns.actual) score += 2;
+        const text =
+            row
+                .map(
+                    cell =>
+                        String(
+                            cell ?? ""
+                        ).toLowerCase()
+                )
+                .join(" ");
 
 
         if (
-            !best ||
-            score > best.score
+            text.includes("date") ||
+            text.includes("day") ||
+            text.includes("kpi")
         ) {
 
-            best = {
-
-                sheetName,
-
-                result,
-
-                columns,
-
-                score
-
-            };
+            return i + 1;
 
         }
 
     }
 
 
-    return best;
-}
+    /*
+       Most DGR Daily_KPI files have
+       header rows above the actual data.
+       Find the first row with numeric
+       values in the target KPI columns.
+    */
+
+    for (
+        let i = 0;
+        i < rows.length;
+        i++
+    ) {
+
+        const row =
+            rows[i];
 
 
-/* =========================================================
-   NORMALISE DATA
-   ========================================================= */
+        if (
+            row &&
+            (
+                parseNumber(
+                    row[8]
+                ) !== null ||
+                parseNumber(
+                    row[21]
+                ) !== null ||
+                parseNumber(
+                    row[29]
+                ) !== null
+            )
+        ) {
 
-function normalise(
-    sheetData
-) {
-
-    const {
-        rows,
-        columns
-    } = sheetData;
-
-
-    const output = [];
-
-
-    rows.forEach(
-        row => {
-
-            const date =
-                parseDate(
-                    row[
-                        columns.date
-                    ]
-                );
-
-
-            if (!date) {
-                return;
-            }
-
-
-            let pa =
-                num(
-                    row[
-                        columns.pa
-                    ]
-                );
-
-
-            let pr =
-                num(
-                    row[
-                        columns.pr
-                    ]
-                );
-
-
-            /*
-             * Some DGRs store PA/PR as decimals:
-             * 0.98 instead of 98.
-             *
-             * Convert automatically.
-             */
-
-            if (
-                pa !== null &&
-                pa <= 1
-            ) {
-
-                pa *= 100;
-
-            }
-
-
-            if (
-                pr !== null &&
-                pr <= 1
-            ) {
-
-                pr *= 100;
-
-            }
-
-
-            output.push({
-
-                date,
-
-                pa,
-
-                pr,
-
-                ghi:
-                    num(
-                        row[
-                            columns.ghi
-                        ]
-                    ),
-
-                poaUp:
-                    num(
-                        row[
-                            columns.poaUp
-                        ]
-                    ),
-
-                poaDown:
-                    num(
-                        row[
-                            columns.poaDown
-                        ]
-                    ),
-
-                measured:
-                    num(
-                        row[
-                            columns.measured
-                        ]
-                    ),
-
-                actual:
-                    num(
-                        row[
-                            columns.actual
-                        ]
-                    ),
-
-                capacity:
-                    num(
-                        row[
-                            columns.capacity
-                        ]
-                    )
-
-            });
+            return i;
 
         }
-    );
+
+    }
 
 
-    output.sort(
-        (
-            a,
-            b
-        ) =>
-            a.date - b.date
-    );
+    return 1;
 
-
-    return output;
 }
 
 
 /* =========================================================
-   FORMAT NUMBER
-   ========================================================= */
+   PARSE NUMBER
+========================================================= */
 
-function formatNumber(
-    value,
-    decimals = 2
+function parseNumber(
+    value
 ) {
 
     if (
         value === null ||
         value === undefined ||
+        value === ""
+    ) {
+
+        return null;
+
+    }
+
+
+    if (
+        typeof value === "number"
+    ) {
+
+        return Number.isFinite(
+            value
+        )
+            ? value
+            : null;
+
+    }
+
+
+    let text =
+        String(
+            value
+        ).trim();
+
+
+    if (!text) {
+        return null;
+    }
+
+
+    /*
+       Remove commas and units.
+    */
+
+    text =
+        text.replace(
+            /,/g,
+            ""
+        );
+
+
+    const match =
+        text.match(
+            /-?\d+(?:\.\d+)?/
+        );
+
+
+    if (!match) {
+        return null;
+    }
+
+
+    const number =
+        Number(
+            match[0]
+        );
+
+
+    return Number.isFinite(
+        number
+    )
+        ? number
+        : null;
+
+}
+
+
+/* =========================================================
+   LATEST NUMERIC VALUE
+========================================================= */
+
+function getLatestNumericValue(
+    values
+) {
+
+    for (
+        let i = values.length - 1;
+        i >= 0;
+        i--
+    ) {
+
+        if (
+            Number.isFinite(
+                values[i]
+            )
+        ) {
+
+            return values[i];
+
+        }
+
+    }
+
+
+    return null;
+
+}
+
+
+/* =========================================================
+   FORMAT PERCENT
+========================================================= */
+
+function formatPercent(
+    value
+) {
+
+    if (
+        value === null ||
         !Number.isFinite(value)
     ) {
 
@@ -822,1592 +3322,108 @@ function formatNumber(
     }
 
 
-    return value.toLocaleString(
-        "en-IN",
-        {
-            minimumFractionDigits:
-                decimals,
-
-            maximumFractionDigits:
-                decimals
-        }
-    );
-}
-
-
-/* =========================================================
-   CHART COLORS
-   ========================================================= */
-
-const chartColors = {
-
-    primary:
-        "#27a5ad",
-
-    dark:
-        "#17252a",
-
-    secondary:
-        "#78c7cc",
-
-    light:
-        "#b9e2e4",
-
-    grey:
-        "#9aa8ab",
-
-    orange:
-        "#e6a23c"
-
-};
-
-
-/* =========================================================
-   DESTROY CHART
-   ========================================================= */
-
-function destroyChart(id) {
-
-    if (
-        chartInstances[id]
-    ) {
-
-        chartInstances[id].destroy();
-
-        delete chartInstances[id];
-
-    }
+    return `${value.toFixed(2)}%`;
 
 }
 
 
 /* =========================================================
-   CREATE CHART
-   ========================================================= */
+   UPDATE ENERGY SUMMARY
+========================================================= */
 
-function createChart(
-    id,
-    config
+function updateEnergySummary(
+    energy
 ) {
 
-    const canvas =
-        el(id);
-
-
-    if (!canvas) {
-        return;
-    }
-
-
-    destroyChart(id);
-
-
-    chartInstances[id] =
-        new Chart(
-            canvas,
-            config
-        );
-
-}
-
-
-/* =========================================================
-   COMMON OPTIONS
-   ========================================================= */
-
-function commonOptions(
-    yTitle = ""
-) {
-
-    return {
-
-        responsive: true,
-
-        maintainAspectRatio: false,
-
-        interaction: {
-
-            mode: "index",
-
-            intersect: false
-
-        },
-
-        plugins: {
-
-            legend: {
-
-                position: "top",
-
-                labels: {
-
-                    usePointStyle: true,
-
-                    padding: 15,
-
-                    font: {
-
-                        family: "Inter",
-
-                        size: 10
-
-                    }
-
-                }
-
-            },
-
-            tooltip: {
-
-                backgroundColor:
-                    "#17252a",
-
-                padding: 10,
-
-                cornerRadius: 7
-
-            }
-
-        },
-
-        scales: {
-
-            x: {
-
-                grid: {
-
-                    display: false
-
-                },
-
-                ticks: {
-
-                    maxTicksLimit: 12,
-
-                    font: {
-
-                        size: 9
-
-                    }
-
-                }
-
-            },
-
-            y: {
-
-                grid: {
-
-                    color:
-                        "rgba(23,37,42,0.07)"
-
-                },
-
-                title: {
-
-                    display:
-                        Boolean(yTitle),
-
-                    text:
-                        yTitle,
-
-                    font: {
-
-                        size: 10
-
-                    }
-
-                },
-
-                ticks: {
-
-                    font: {
-
-                        size: 9
-
-                    }
-
-                }
-
-            }
-
-        }
-
-    };
-}
-
-
-/* =========================================================
-   LINE CHART
-   ========================================================= */
-
-function makeLineChart(
-    id,
-    labels,
-    datasets,
-    yTitle
-) {
-
-    createChart(
-        id,
-        {
-
-            type: "line",
-
-            data: {
-
-                labels,
-
-                datasets
-
-            },
-
-            options:
-                commonOptions(
-                    yTitle
-                )
-
-        }
-    );
-
-}
-
-
-/* =========================================================
-   BAR CHART
-   ========================================================= */
-
-function makeBarChart(
-    id,
-    labels,
-    datasets,
-    yTitle
-) {
-
-    createChart(
-        id,
-        {
-
-            type: "bar",
-
-            data: {
-
-                labels,
-
-                datasets
-
-            },
-
-            options:
-                commonOptions(
-                    yTitle
-                )
-
-        }
-    );
-
-}
-
-
-/* =========================================================
-   PA CHARTS
-   ========================================================= */
-
-function drawPA(
-    labels,
-    data
-) {
-
-    const dataset = {
-
-        label:
-            "Plant Availability (%)",
-
-        data,
-
-        borderColor:
-            chartColors.primary,
-
-        backgroundColor:
-            "rgba(39,165,173,0.10)",
-
-        pointBackgroundColor:
-            chartColors.primary,
-
-        pointRadius: 3,
-
-        pointHoverRadius: 6,
-
-        borderWidth: 2,
-
-        tension: 0.3
-
-    };
-
-
-    makeLineChart(
-        "paChart",
-        labels,
-        [dataset],
-        "Availability (%)"
-    );
-
-
-    makeBarChart(
-
-        "paBarChart",
-
-        labels,
-
-        [
-
-            {
-
-                label:
-                    "Plant Availability (%)",
-
-                data,
-
-                backgroundColor:
-                    "rgba(39,165,173,0.65)",
-
-                borderRadius: 4
-
-            }
-
-        ],
-
-        "Availability (%)"
-
-    );
-
-}
-
-
-/* =========================================================
-   PR CHARTS
-   ========================================================= */
-
-function drawPR(
-    labels,
-    data
-) {
-
-    makeLineChart(
-
-        "prChart",
-
-        labels,
-
-        [
-
-            {
-
-                label:
-                    "Performance Ratio (%)",
-
-                data,
-
-                borderColor:
-                    chartColors.dark,
-
-                backgroundColor:
-                    "rgba(23,37,42,0.08)",
-
-                pointBackgroundColor:
-                    chartColors.dark,
-
-                pointRadius: 3,
-
-                borderWidth: 2,
-
-                tension: 0.3
-
-            }
-
-        ],
-
-        "PR (%)"
-
-    );
-
-
-    makeBarChart(
-
-        "prBarChart",
-
-        labels,
-
-        [
-
-            {
-
-                label:
-                    "Performance Ratio (%)",
-
-                data,
-
-                backgroundColor:
-                    "rgba(23,37,42,0.60)",
-
-                borderRadius: 4
-
-            }
-
-        ],
-
-        "PR (%)"
-
-    );
-
-}
-
-
-/* =========================================================
-   AEY CALCULATION
-   ========================================================= */
-
-function calculateAEY(
-    data
-) {
-
-    let cumulative =
-        0;
-
-
-    let capacity =
-        null;
-
-
-    /*
-       Find first valid capacity.
-    */
-
-    for (
-        const row
-        of data
-    ) {
-
-        if (
-            row.capacity !== null &&
-            row.capacity > 0
-        ) {
-
-            capacity =
-                row.capacity;
-
-            break;
-
-        }
-
-    }
-
-
-    /*
-       If capacity isn't available,
-       use a default only for visualization.
-    */
-
-    if (
-        !capacity ||
-        capacity <= 0
-    ) {
-
-        return data.map(
-            () => null
-        );
-
-    }
-
-
-    const capacityKwp =
-        capacity * 1000;
-
-
-    return data.map(
-        row => {
-
-            if (
-                row.actual !== null
-            ) {
-
-                cumulative +=
-                    row.actual;
-
-            }
-
-
-            return (
-                cumulative /
-                capacityKwp
-            );
-
-        }
-    );
-
-}
-
-
-/* =========================================================
-   AEY CHART
-   ========================================================= */
-
-function drawAEY(
-    labels,
-    values
-) {
-
-    createChart(
-
-        "aeyChart",
-
-        {
-
-            type: "line",
-
-            data: {
-
-                labels,
-
-                datasets: [
-
-                    {
-
-                        label:
-                            "Cumulative AEY (kWh/kWp)",
-
-                        data: values,
-
-                        borderColor:
-                            chartColors.primary,
-
-                        backgroundColor:
-                            "rgba(39,165,173,0.14)",
-
-                        fill: true,
-
-                        pointRadius: 2,
-
-                        borderWidth: 2,
-
-                        tension: 0.25
-
-                    }
-
-                ]
-
-            },
-
-            options:
-                commonOptions(
-                    "kWh/kWp"
-                )
-
-        }
-
-    );
-
-}
-
-
-/* =========================================================
-   GHI CHARTS
-   ========================================================= */
-
-function drawGHI(
-    labels,
-    values
-) {
-
-    makeBarChart(
-
-        "ghiChart",
-
-        labels,
-
-        [
-
-            {
-
-                label:
-                    "GHI (kWh/m²)",
-
-                data: values,
-
-                backgroundColor:
-                    "rgba(230,162,60,0.70)",
-
-                borderRadius: 4
-
-            }
-
-        ],
-
-        "GHI (kWh/m²)"
-
-    );
-
-
-    makeLineChart(
-
-        "ghiLineChart",
-
-        labels,
-
-        [
-
-            {
-
-                label:
-                    "GHI (kWh/m²)",
-
-                data: values,
-
-                borderColor:
-                    chartColors.orange,
-
-                backgroundColor:
-                    "rgba(230,162,60,0.12)",
-
-                pointRadius: 3,
-
-                borderWidth: 2,
-
-                tension: 0.3
-
-            }
-
-        ],
-
-        "GHI (kWh/m²)"
-
-    );
-
-}
-
-
-/* =========================================================
-   POA / GII CHART
-   ========================================================= */
-
-function drawGII(
-    labels,
-    poaUp,
-    poaDown
-) {
-
-    makeLineChart(
-
-        "giiChart",
-
-        labels,
-
-        [
-
-            {
-
-                label:
-                    "POA Up (kWh/m²)",
-
-                data:
-                    poaUp,
-
-                borderColor:
-                    chartColors.primary,
-
-                backgroundColor:
-                    "rgba(39,165,173,0.10)",
-
-                pointRadius: 2,
-
-                borderWidth: 2,
-
-                tension: 0.3
-
-            },
-
-            {
-
-                label:
-                    "POA Down (kWh/m²)",
-
-                data:
-                    poaDown,
-
-                borderColor:
-                    chartColors.dark,
-
-                backgroundColor:
-                    "rgba(23,37,42,0.08)",
-
-                pointRadius: 2,
-
-                borderWidth: 2,
-
-                tension: 0.3
-
-            }
-
-        ],
-
-        "Irradiance (kWh/m²)"
-
-    );
-
-}
-
-
-/* =========================================================
-   GENERATION CHART
-   ========================================================= */
-
-function drawGeneration(
-    labels,
-    measured,
-    actual
-) {
-
-    /*
-       LINE
-    */
-
-    makeLineChart(
-
-        "generationChart",
-
-        labels,
-
-        [
-
-            {
-
-                label:
-                    "Measured / Inverter Export",
-
-                data:
-                    measured,
-
-                borderColor:
-                    chartColors.primary,
-
-                backgroundColor:
-                    "rgba(39,165,173,0.08)",
-
-                pointRadius: 2,
-
-                borderWidth: 2,
-
-                tension: 0.25
-
-            },
-
-            {
-
-                label:
-                    "Actual / 220kV Net Export",
-
-                data:
-                    actual,
-
-                borderColor:
-                    chartColors.dark,
-
-                backgroundColor:
-                    "rgba(23,37,42,0.08)",
-
-                pointRadius: 2,
-
-                borderWidth: 2,
-
-                tension: 0.25
-
-            }
-
-        ],
-
-        "Generation (kWh)"
-
-    );
-
-
-    /*
-       BAR
-    */
-
-    makeBarChart(
-
-        "generationBarChart",
-
-        labels,
-
-        [
-
-            {
-
-                label:
-                    "Measured",
-
-                data:
-                    measured,
-
-                backgroundColor:
-                    "rgba(39,165,173,0.65)",
-
-                borderRadius: 3
-
-            },
-
-            {
-
-                label:
-                    "Actual",
-
-                data:
-                    actual,
-
-                backgroundColor:
-                    "rgba(23,37,42,0.60)",
-
-                borderRadius: 3
-
-            }
-
-        ],
-
-        "Generation (kWh)"
-
-    );
-
-
-    /*
-       PIE / DOUGHNUT
-       Based on total measured vs actual.
-    */
-
-    const totalMeasured =
-        measured
-            .filter(
-                value =>
-                    value !== null
-            )
-            .reduce(
+    const budget =
+        energy.budget.reduce(
+            (sum, value) =>
+                sum +
                 (
-                    sum,
-                    value
-                ) =>
-                    sum + value,
-                0
-            );
-
-
-    const totalActual =
-        actual
-            .filter(
-                value =>
-                    value !== null
-            )
-            .reduce(
-                (
-                    sum,
-                    value
-                ) =>
-                    sum + value,
-                0
-            );
-
-
-    const difference =
-        Math.max(
-            totalMeasured -
-            totalActual,
+                    Number.isFinite(value)
+                        ? value
+                        : 0
+                ),
             0
         );
 
 
-    createChart(
+    const measured =
+        energy.measured.reduce(
+            (sum, value) =>
+                sum +
+                (
+                    Number.isFinite(value)
+                        ? value
+                        : 0
+                ),
+            0
+        );
 
-        "generationPieChart",
 
-        {
+    const variance =
+        measured -
+        budget;
 
-            type: "doughnut",
 
-            data: {
+    setText(
+        "totalBudget",
+        `${budget.toFixed(2)} GWh`
+    );
 
-                labels: [
 
-                    "Actual Generation",
+    setText(
+        "totalMeasured",
+        `${measured.toFixed(2)}`
+    );
 
-                    "Generation Difference"
 
-                ],
-
-                datasets: [
-
-                    {
-
-                        data: [
-
-                            totalActual,
-
-                            difference
-
-                        ],
-
-                        backgroundColor: [
-
-                            chartColors.primary,
-
-                            chartColors.light
-
-                        ],
-
-                        borderWidth: 0
-
-                    }
-
-                ]
-
-            },
-
-            options: {
-
-                responsive: true,
-
-                maintainAspectRatio: false,
-
-                cutout: "62%",
-
-                plugins: {
-
-                    legend: {
-
-                        position: "bottom",
-
-                        labels: {
-
-                            usePointStyle: true,
-
-                            padding: 15,
-
-                            font: {
-
-                                size: 10
-
-                            }
-
-                        }
-
-                    },
-
-                    tooltip: {
-
-                        callbacks: {
-
-                            label:
-                                function(
-                                    context
-                                ) {
-
-                                    return (
-
-                                        " " +
-
-                                        context.label +
-
-                                        ": " +
-
-                                        formatNumber(
-                                            context.raw / 1000,
-                                            2
-                                        ) +
-
-                                        " MWh"
-
-                                    );
-
-                                }
-
-                        }
-
-                    }
-
-                }
-
-            }
-
-        }
-
+    setText(
+        "energyVariance",
+        `${variance >= 0 ? "+" : ""}${variance.toFixed(2)}`
     );
 
 }
 
 
 /* =========================================================
-   SCATTER PLOT
-   ========================================================= */
+   SET TEXT
+========================================================= */
 
-function drawScatter(
-    data
+function setText(
+    id,
+    value
 ) {
 
-    const points =
-        data
-            .filter(
-                row =>
-                    row.ghi !== null &&
-                    row.actual !== null
-            )
-            .map(
-                row => ({
-
-                    x: row.ghi,
-
-                    y: row.actual / 1000,
-
-                    date:
-                        shortDate(
-                            row.date
-                        )
-
-                })
-            );
-
-
-    createChart(
-
-        "scatterChart",
-
-        {
-
-            type: "scatter",
-
-            data: {
-
-                datasets: [
-
-                    {
-
-                        label:
-                            "GHI vs Actual Generation",
-
-                        data: points,
-
-                        backgroundColor:
-                            chartColors.primary,
-
-                        borderColor:
-                            chartColors.primary,
-
-                        pointRadius: 5,
-
-                        pointHoverRadius: 7
-
-                    }
-
-                ]
-
-            },
-
-            options: {
-
-                responsive: true,
-
-                maintainAspectRatio: false,
-
-                plugins: {
-
-                    legend: {
-
-                        position: "top",
-
-                        labels: {
-
-                            usePointStyle: true,
-
-                            font: {
-
-                                size: 10
-
-                            }
-
-                        }
-
-                    },
-
-                    tooltip: {
-
-                        callbacks: {
-
-                            label:
-                                function(
-                                    context
-                                ) {
-
-                                    const point =
-                                        context.raw;
-
-
-                                    return (
-
-                                        ` ${point.date} | ` +
-
-                                        `GHI: ${formatNumber(
-                                            point.x,
-                                            2
-                                        )} | ` +
-
-                                        `Generation: ${formatNumber(
-                                            point.y,
-                                            2
-                                        )} MWh`
-
-                                    );
-
-                                }
-
-                        }
-
-                    }
-
-                },
-
-                scales: {
-
-                    x: {
-
-                        title: {
-
-                            display: true,
-
-                            text:
-                                "GHI (kWh/m²)"
-
-                        },
-
-                        grid: {
-
-                            color:
-                                "rgba(23,37,42,0.07)"
-
-                        }
-
-                    },
-
-                    y: {
-
-                        title: {
-
-                            display: true,
-
-                            text:
-                                "Actual Generation (MWh)"
-
-                        },
-
-                        grid: {
-
-                            color:
-                                "rgba(23,37,42,0.07)"
-
-                        }
-
-                    }
-
-                }
-
-            }
-
-        }
-
-    );
-
-}
-
-
-/* =========================================================
-   FILTER DATA
-   ========================================================= */
-
-function applyFilters() {
-
-    if (!allData.length) {
-        return;
-    }
-
-
-    const from =
-        el("fromDate").value;
-
-    const to =
-        el("toDate").value;
-
-
-    /*
-       Custom date range
-    */
-
-    if (from || to) {
-
-        const fromDate =
-            from
-                ? new Date(
-                    from +
-                    "T00:00:00"
-                )
-                : null;
-
-
-        const toDate =
-            to
-                ? new Date(
-                    to +
-                    "T23:59:59"
-                )
-                : null;
-
-
-        filteredData =
-            allData.filter(
-                row => {
-
-                    return (
-
-                        (!fromDate ||
-                            row.date >= fromDate)
-
-                        &&
-
-                        (!toDate ||
-                            row.date <= toDate)
-
-                    );
-
-                }
-            );
-
-    }
-
-    else {
-
-        const selected =
-            document.querySelector(
-                ".range-button.selected"
-            );
-
-
-        const range =
-            selected
-                ? selected.dataset.range
-                : "30";
-
-
-        if (range === "all") {
-
-            filteredData =
-                [...allData];
-
-        }
-
-        else {
-
-            filteredData =
-                allData.slice(
-                    -Number(range)
-                );
-
-        }
-
-    }
-
-
-    renderDashboard();
-
-}
-
-
-/* =========================================================
-   RENDER EVERYTHING
-   ========================================================= */
-
-function renderDashboard() {
-
-    if (!filteredData.length) {
-
-        return;
-
-    }
-
-
-    const labels =
-        filteredData.map(
-            row =>
-                shortDate(
-                    row.date
-                )
+    const element =
+        getElement(
+            id
         );
 
 
-    /*
-       PA
-    */
-
-    drawPA(
-
-        labels,
-
-        filteredData.map(
-            row =>
-                row.pa
-        )
-
-    );
-
-
-    /*
-       PR
-    */
-
-    drawPR(
-
-        labels,
-
-        filteredData.map(
-            row =>
-                row.pr
-        )
-
-    );
-
-
-    /*
-       AEY
-    */
-
-    const aey =
-        calculateAEY(
-            filteredData
-        );
-
-
-    drawAEY(
-        labels,
-        aey
-    );
-
-
-    /*
-       GHI
-    */
-
-    drawGHI(
-
-        labels,
-
-        filteredData.map(
-            row =>
-                row.ghi
-        )
-
-    );
-
-
-    /*
-       POA / GII
-    */
-
-    drawGII(
-
-        labels,
-
-        filteredData.map(
-            row =>
-                row.poaUp
-        ),
-
-        filteredData.map(
-            row =>
-                row.poaDown
-        )
-
-    );
-
-
-    /*
-       Generation
-    */
-
-    drawGeneration(
-
-        labels,
-
-        filteredData.map(
-            row =>
-                row.measured
-        ),
-
-        filteredData.map(
-            row =>
-                row.actual
-        )
-
-    );
-
-
-    /*
-       Scatter
-    */
-
-    drawScatter(
-        filteredData
-    );
-
-
-    /*
-       KPIs
-    */
-
-    updateKPIs(
-        aey
-    );
-
-
-    /*
-       Status
-    */
-
-    const first =
-        filteredData[0];
-
-    const last =
-        filteredData[
-            filteredData.length - 1
-        ];
-
-
-    el("dataStatus").textContent =
-
-        `${allData.length} DGR records loaded • ` +
-
-        `Showing ${filteredData.length} days • ` +
-
-        `${isoDate(first.date)} → ${isoDate(last.date)}`;
+    if (element) {
+        element.textContent =
+            value;
+    }
 
 }
 
 
 /* =========================================================
-   KPI UPDATE
-   ========================================================= */
+   DESTROY CHART
+========================================================= */
 
-function updateKPIs(
-    aey
+function destroyChart(
+    id
 ) {
-
-    if (!filteredData.length) {
-        return;
-    }
-
-
-    const latest =
-        filteredData[
-            filteredData.length - 1
-        ];
-
-
-    /*
-       PA
-    */
-
-    el("kpiPA").textContent =
-
-        latest.pa !== null
-
-            ? formatNumber(
-                latest.pa,
-                2
-            ) + "%"
-
-            : "—";
-
-
-    /*
-       PR
-    */
-
-    el("kpiPR").textContent =
-
-        latest.pr !== null
-
-            ? formatNumber(
-                latest.pr,
-                2
-            ) + "%"
-
-            : "—";
-
-
-    /*
-       AEY
-    */
-
-    const latestAEY =
-        aey[
-            aey.length - 1
-        ];
-
-
-    el("kpiAEY").textContent =
-
-        latestAEY !== null &&
-        latestAEY !== undefined
-
-            ? formatNumber(
-                latestAEY,
-                2
-            )
-
-            : "—";
-
-
-    /*
-       Generation
-    */
-
-    el("kpiGen").textContent =
-
-        latest.actual !== null
-
-            ? formatNumber(
-                latest.actual / 1000,
-                2
-            ) + " MWh"
-
-            : "—";
-
-
-    /*
-       Capacity
-    */
-
-    const capacityRow =
-        allData.find(
-            row =>
-                row.capacity !== null
-        );
-
 
     if (
-        capacityRow &&
-        capacityRow.capacity
+        charts[id]
     ) {
 
-        el("plantCapacity").textContent =
+        charts[id].destroy();
 
-            `${formatNumber(
-                capacityRow.capacity,
-                2
-            )} MWp DC`;
+        delete charts[id];
 
     }
 
@@ -2415,385 +3431,122 @@ function updateKPIs(
 
 
 /* =========================================================
-   MAPPING DISPLAY
-   ========================================================= */
+   SHOW CHART MESSAGE
+========================================================= */
 
-function displayMapping(
-    sheetName,
-    columns
+function showChartMessage(
+    canvas,
+    message
 ) {
 
-    el("mappingInfo").innerHTML = `
-
-        <strong>
-            DGR successfully loaded
-        </strong>
-
-        <br>
-
-        Sheet:
-        ${sheetName}
-
-        <br>
-
-        Date:
-        ${columns.date || "Not found"}
-
-        <br>
-
-        PA:
-        ${columns.pa || "Not found"}
-
-        ·
-
-        PR:
-        ${columns.pr || "Not found"}
-
-        ·
-
-        GHI:
-        ${columns.ghi || "Not found"}
-
-        <br>
-
-        POA Up:
-        ${columns.poaUp || "Not found"}
-
-        ·
-
-        POA Down:
-        ${columns.poaDown || "Not found"}
-
-        <br>
-
-        Measured:
-        ${columns.measured || "Not found"}
-
-        ·
-
-        Actual:
-        ${columns.actual || "Not found"}
-
-    `;
-
-}
+    const parent =
+        canvas.parentElement;
 
 
-/* =========================================================
-   LOAD DGR
-   ========================================================= */
-
-async function loadDGR(
-    file
-) {
-
-    if (!file) {
+    if (!parent) {
         return;
     }
 
 
-    try {
+    parent.style.display =
+        "flex";
 
-        el("dataStatus").textContent =
-            "Reading DGR...";
+    parent.style.alignItems =
+        "center";
 
-
-        /*
-         * Read file.
-         */
-
-        const buffer =
-            await file.arrayBuffer();
+    parent.style.justifyContent =
+        "center";
 
 
-        /*
-         * Parse workbook.
-         */
-
-        const workbook =
-            XLSX.read(
-                buffer,
-                {
-                    type: "array",
-                    cellDates: true
-                }
-            );
-
-
-        /*
-         * Find best worksheet.
-         */
-
-        const best =
-            findBestSheet(
-                workbook
-            );
-
-
-        if (!best) {
-
-            throw new Error(
-
-                "No worksheet containing usable DGR data was found."
-
-            );
-
-        }
-
-
-        /*
-         * Check minimum requirement.
-         */
-
-        if (!best.columns.date) {
-
-            throw new Error(
-
-                "The DGR does not contain a Date column."
-
-            );
-
-        }
-
-
-        /*
-         * Normalise.
-         */
-
-        allData =
-            normalise(
-                best.result
-            );
-
-
-        if (!allData.length) {
-
-            throw new Error(
-
-                "The worksheet was found, but no valid daily records could be read."
-
-            );
-
-        }
-
-
-        /*
-         * Display detected fields.
-         */
-
-        displayMapping(
-            best.sheetName,
-            best.columns
+    const messageElement =
+        document.createElement(
+            "div"
         );
 
 
-        /*
-         * Date limits.
-         */
-
-        const first =
-            allData[0].date;
-
-        const last =
-            allData[
-                allData.length - 1
-            ].date;
+    messageElement.textContent =
+        message;
 
 
-        el("fromDate").min =
-            isoDate(first);
+    messageElement.style.color =
+        "#89979a";
 
-        el("fromDate").max =
-            isoDate(last);
-
-        el("toDate").min =
-            isoDate(first);
-
-        el("toDate").max =
-            isoDate(last);
+    messageElement.style.fontSize =
+        "11px";
 
 
-        /*
-         * Apply current filter.
-         */
-
-        applyFilters();
-
-
-        /*
-         * Success message.
-         */
-
-        el("dataStatus").textContent =
-
-            `DGR loaded successfully • ` +
-
-            `${allData.length} daily records • ` +
-
-            `Sheet: ${best.sheetName}`;
-
-    }
-
-    catch (error) {
-
-        console.error(
-            error
-        );
-
-
-        el("dataStatus").textContent =
-            "DGR could not be loaded.";
-
-
-        alert(
-
-            "DGR upload error:\n\n" +
-            error.message
-
-        );
-
-    }
-
-}
-
-
-/* =========================================================
-   FILE UPLOAD
-   ========================================================= */
-
-el("dgrInput")
-    .addEventListener(
-        "change",
-        event => {
-
-            const file =
-                event.target.files[0];
-
-
-            loadDGR(
-                file
-            );
-
-        }
-    );
-
-
-/* =========================================================
-   DRAG & DROP
-   ========================================================= */
-
-const dropzone =
-    el("dropzone");
-
-
-if (dropzone) {
-
-    dropzone.addEventListener(
-        "click",
-        () => {
-
-            el("dgrInput").click();
-
-        }
-    );
-
-
-    dropzone.addEventListener(
-        "dragover",
-        event => {
-
-            event.preventDefault();
-
-            dropzone.classList.add(
-                "dragging"
-            );
-
-        }
-    );
-
-
-    dropzone.addEventListener(
-        "dragleave",
-        () => {
-
-            dropzone.classList.remove(
-                "dragging"
-            );
-
-        }
-    );
-
-
-    dropzone.addEventListener(
-        "drop",
-        event => {
-
-            event.preventDefault();
-
-
-            dropzone.classList.remove(
-                "dragging"
-            );
-
-
-            const file =
-                event.dataTransfer.files[0];
-
-
-            loadDGR(
-                file
-            );
-
-        }
+    parent.appendChild(
+        messageElement
     );
 
 }
 
 
 /* =========================================================
-   RANGE BUTTONS
-   ========================================================= */
+   NAVIGATION
+========================================================= */
 
 document
     .querySelectorAll(
-        ".range-button"
+        ".nav-item, .quick-navigation button"
     )
     .forEach(
         button => {
 
             button.addEventListener(
                 "click",
-                () => {
+                function() {
 
-                    document
-                        .querySelectorAll(
-                            ".range-button"
-                        )
-                        .forEach(
-                            item =>
-                                item.classList.remove(
-                                    "selected"
-                                )
+                    const targetId =
+                        this.dataset.target;
+
+
+                    const target =
+                        getElement(
+                            targetId
                         );
 
 
-                    button.classList.add(
-                        "selected"
+                    if (!target) {
+                        return;
+                    }
+
+
+                    target.scrollIntoView(
+                        {
+                            behavior: "smooth",
+                            block: "start"
+                        }
                     );
 
 
                     /*
-                     * Clear custom dates.
-                     */
+                       Update sidebar active state.
+                    */
 
-                    el("fromDate").value =
-                        "";
+                    document
+                        .querySelectorAll(
+                            ".nav-item"
+                        )
+                        .forEach(
+                            item =>
+                                item.classList.remove(
+                                    "active"
+                                )
+                        );
 
-                    el("toDate").value =
-                        "";
+
+                    const nav =
+                        document.querySelector(
+                            `.nav-item[data-target="${targetId}"]`
+                        );
 
 
-                    applyFilters();
+                    if (nav) {
+                        nav.classList.add(
+                            "active"
+                        );
+                    }
 
                 }
             );
@@ -2803,114 +3556,224 @@ document
 
 
 /* =========================================================
-   CUSTOM DATE
-   ========================================================= */
+   RESET ZOOM BUTTONS
+========================================================= */
 
-el("applyDate")
-    .addEventListener(
-        "click",
-        () => {
+document
+    .querySelectorAll(
+        ".reset-chart"
+    )
+    .forEach(
+        button => {
 
-            const from =
-                el("fromDate").value;
+            button.addEventListener(
+                "click",
+                function() {
 
-            const to =
-                el("toDate").value;
-
-
-            if (
-                from &&
-                to &&
-                from > to
-            ) {
-
-                alert(
-                    "From date cannot be later than To date."
-                );
-
-                return;
-
-            }
+                    const chartId =
+                        this.dataset.chart;
 
 
-            document
-                .querySelectorAll(
-                    ".range-button"
-                )
-                .forEach(
-                    button =>
-                        button.classList.remove(
-                            "selected"
-                        )
-                );
+                    const chart =
+                        charts[
+                            chartId
+                        ];
 
 
-            applyFilters();
+                    if (
+                        chart &&
+                        chart.resetZoom
+                    ) {
+
+                        chart.resetZoom();
+
+                    }
+
+                }
+            );
 
         }
     );
 
 
 /* =========================================================
-   RESET
-   ========================================================= */
+   RESET APPLICATION
+========================================================= */
 
-el("resetDate")
-    .addEventListener(
-        "click",
-        () => {
+function resetApplication() {
 
-            el("fromDate").value =
-                "";
-
-            el("toDate").value =
-                "";
+    workbook = null;
 
 
-            document
-                .querySelectorAll(
-                    ".range-button"
-                )
-                .forEach(
-                    button =>
-                        button.classList.remove(
-                            "selected"
-                        )
-                );
+    dgrData = {
+
+        dashboard: null,
+
+        annual: null,
+
+        daily: null,
+
+        pa: null,
+
+        curtailment: null
+
+    };
 
 
-            const defaultButton =
-                document.querySelector(
-                    '.range-button[data-range="30"]'
-                );
-
-
-            if (defaultButton) {
-
-                defaultButton.classList.add(
-                    "selected"
-                );
-
-            }
-
-
-            applyFilters();
-
-        }
+    Object.keys(
+        charts
+    ).forEach(
+        id =>
+            destroyChart(id)
     );
+
+
+    if (fileInput) {
+        fileInput.value = "";
+    }
+
+
+    const fileInfo =
+        getElement(
+            "fileInfo"
+        );
+
+
+    if (fileInfo) {
+        fileInfo.classList.add(
+            "hidden"
+        );
+    }
+
+
+    const dataPreview =
+        getElement(
+            "data-preview"
+        );
+
+
+    if (dataPreview) {
+        dataPreview.classList.add(
+            "hidden"
+        );
+    }
+
+
+    setStatus(
+        "Upload your DGR to begin analysis."
+    );
+
+
+    setText(
+        "dataStatus",
+        "No DGR loaded"
+    );
+
+
+    const dot =
+        document.querySelector(
+            ".status-dot"
+        );
+
+
+    if (dot) {
+        dot.classList.remove(
+            "loaded"
+        );
+    }
+
+
+    [
+        "dashboardPA",
+        "dashboardPR",
+        "dashboardOperating",
+        "dashboardLoss",
+        "dashboardCurtailment",
+        "dashboardMeasured",
+        "totalBudget",
+        "totalMeasured",
+        "energyVariance"
+    ]
+    .forEach(
+        id =>
+            setText(
+                id,
+                "—"
+            )
+    );
+
+}
+
+
+/* =========================================================
+   UPDATE DATA STATUS AFTER LOAD
+========================================================= */
+
+function updateLoadedStatus() {
+
+    setText(
+        "dataStatus",
+        "DGR loaded"
+    );
+
+
+    const dot =
+        document.querySelector(
+            ".status-dot"
+        );
+
+
+    if (dot) {
+        dot.classList.add(
+            "loaded"
+        );
+    }
+
+}
+
+
+/* =========================================================
+   OVERRIDE CREATE DASHBOARD
+   TO ALSO UPDATE STATUS
+========================================================= */
+
+const originalCreateDashboard =
+    createDashboard;
+
+
+/*
+   We intentionally call status update
+   after the dashboard has been created.
+*/
+
+function runDashboard() {
+
+    originalCreateDashboard();
+
+    updateLoadedStatus();
+
+}
+
+
+/* =========================================================
+   PATCH PROCESSING
+========================================================= */
+
+const originalProcessDGR =
+    processDGR;
+
+
+/*
+   The original processDGR already creates
+   the dashboard. This function remains here
+   for clarity and future extensions.
+*/
 
 
 /* =========================================================
    INITIAL STATE
-   ========================================================= */
+========================================================= */
 
-window.addEventListener(
-    "DOMContentLoaded",
-    () => {
-
-        el("dataStatus").textContent =
-
-            "No DGR loaded — upload an Excel or CSV Daily Generation Report.";
-
-    }
+setStatus(
+    "Upload your DGR to begin analysis."
 );
