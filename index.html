@@ -2,46 +2,46 @@
 <html lang="en">
 
 <head>
+
     <meta charset="UTF-8">
 
-    <meta name="viewport"
-          content="width=device-width, initial-scale=1.0">
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
 
-    <meta name="description"
-          content="Interactive Solar Power Plant Daily Generation Report Dashboard">
+    <title>SRI1PL | Solar Plant Analytics</title>
 
-    <title>SRI1PL | Solar DGR Dashboard</title>
+    <link
+        rel="preconnect"
+        href="https://fonts.googleapis.com"
+    >
 
-    <!-- ==============================
-         GOOGLE FONT
-    =============================== -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        rel="preconnect"
+        href="https://fonts.gstatic.com"
+        crossorigin
+    >
 
     <link
         href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
         rel="stylesheet"
     >
 
-    <!-- ==============================
-         CHART.JS
-    =============================== -->
+    <!-- Chart.js -->
     <script
         src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js">
     </script>
 
-    <!-- ==============================
-         SHEETJS
-         Used to read Excel DGR files
-    =============================== -->
+    <!-- SheetJS -->
     <script
         src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js">
     </script>
 
-    <!-- ==============================
-         MAIN CSS
-    =============================== -->
-    <link rel="stylesheet" href="styles.css">
+    <link
+        rel="stylesheet"
+        href="styles.css"
+    >
 
 </head>
 
@@ -51,13 +51,12 @@
 <div class="app">
 
 
-    <!-- =====================================================
+    <!-- ==================================================
          SIDEBAR
-    ====================================================== -->
+    =================================================== -->
 
     <aside class="sidebar">
 
-        <!-- BRAND -->
         <div class="brand">
 
             <div class="brand-logo">
@@ -67,11 +66,11 @@
             <div class="brand-text">
 
                 <strong>
-                    SOLAR DGR
+                    SRI1PL
                 </strong>
 
                 <span>
-                    Performance Monitor
+                    Solar Analytics
                 </span>
 
             </div>
@@ -79,70 +78,71 @@
         </div>
 
 
-        <!-- NAVIGATION -->
-
         <nav class="sidebar-nav">
 
-            <a href="#dashboard"
-               class="nav-item active">
-
-                <span class="nav-icon">
-                    ◉
-                </span>
-
-                <span>
-                    Dashboard
-                </span>
-
+            <a
+                href="#dashboard"
+                class="nav-item active"
+            >
+                <span class="nav-icon">▦</span>
+                Dashboard
             </a>
 
+            <a
+                href="#upload"
+                class="nav-item"
+            >
+                <span class="nav-icon">↑</span>
+                Upload DGR
+            </a>
 
-            <a href="#upload"
-               class="nav-item">
+            <a
+                href="#generation"
+                class="nav-item"
+            >
+                <span class="nav-icon">⚡</span>
+                Generation
+            </a>
 
-                <span class="nav-icon">
-                    ↑
-                </span>
+            <a
+                href="#irradiance"
+                class="nav-item"
+            >
+                <span class="nav-icon">☀</span>
+                Irradiance
+            </a>
 
-                <span>
-                    DGR Upload
-                </span>
-
+            <a
+                href="#performance"
+                class="nav-item"
+            >
+                <span class="nav-icon">◈</span>
+                Performance
             </a>
 
         </nav>
 
 
-        <!-- PLANT INFORMATION -->
-
         <div class="plant-info">
 
             <span class="plant-label">
-                PLANT
+                SOLAR PLANT
             </span>
 
-            <strong id="plantName">
+            <strong>
                 SRI1PL
             </strong>
 
-            <span
-                id="plantCapacity"
-                class="plant-capacity">
-
-                252.34 MWp DC
-
+            <span id="plantCapacity">
+                Loading capacity...
             </span>
 
         </div>
 
 
-        <!-- SIDEBAR FOOTER -->
-
         <div class="sidebar-footer">
 
-            <span>
-                Solar Generation Analytics
-            </span>
+            Interactive DGR Analytics
 
         </div>
 
@@ -150,123 +150,95 @@
 
 
 
-    <!-- =====================================================
-         MAIN CONTENT
-    ====================================================== -->
+    <!-- ==================================================
+         MAIN
+    =================================================== -->
 
     <main class="main-content">
 
 
-        <!-- =================================================
-             TOP HEADER
-        ================================================== -->
+        <!-- HEADER -->
 
         <header class="top-header">
 
-
-            <div class="header-left">
+            <div>
 
                 <div class="eyebrow">
                     DAILY GENERATION REPORT
                 </div>
 
                 <h1>
-                    Plant Performance Dashboard
+                    Solar Plant Performance
                 </h1>
 
-                <p
-                    id="dataStatus"
-                    class="data-status">
-
-                    No DGR loaded.
-                    Upload the Daily Generation Report
-                    to begin analysis.
-
+                <p id="dataStatus">
+                    Upload a DGR to begin analysis.
                 </p>
 
             </div>
 
 
-            <!-- UPLOAD BUTTON -->
+            <label
+                class="upload-button"
+                for="dgrInput"
+            >
 
-            <div class="header-actions">
+                ↑
+                Upload DGR
 
-                <label
-                    for="dgrInput"
-                    class="upload-button">
+            </label>
 
-                    <span class="upload-icon">
-                        ↑
-                    </span>
-
-                    Upload DGR
-
-                </label>
-
-                <input
-                    type="file"
-                    id="dgrInput"
-                    accept=".xlsx,.xls,.csv"
-                    hidden>
-
-            </div>
+            <input
+                type="file"
+                id="dgrInput"
+                accept=".xlsx,.xls,.csv"
+                hidden
+            >
 
         </header>
 
 
 
-        <!-- =================================================
-             DASHBOARD CONTROLS
-        ================================================== -->
+        <!-- ==================================================
+             FILTERS
+        =================================================== -->
 
-        <section
-            id="dashboard"
-            class="dashboard-controls">
+        <section class="dashboard-controls">
 
-
-            <!-- DATE RANGE -->
-
-            <div class="range-section">
+            <div>
 
                 <span class="control-label">
-                    PERIOD
+                    ANALYSIS PERIOD
                 </span>
 
                 <div class="range-buttons">
 
                     <button
                         class="range-button"
-                        data-range="7">
-
+                        data-range="7"
+                    >
                         7 Days
-
                     </button>
-
 
                     <button
                         class="range-button selected"
-                        data-range="30">
-
+                        data-range="30"
+                    >
                         30 Days
-
                     </button>
-
 
                     <button
                         class="range-button"
-                        data-range="90">
-
+                        data-range="90"
+                    >
                         90 Days
-
                     </button>
-
 
                     <button
                         class="range-button"
-                        data-range="all">
-
+                        data-range="all"
+                    >
                         All Data
-
                     </button>
 
                 </div>
@@ -274,62 +246,50 @@
             </div>
 
 
+            <div class="date-controls">
 
-            <!-- CUSTOM DATE -->
+                <div>
 
-            <div class="date-section">
+                    <label>
+                        From
+                    </label>
 
-                <span class="control-label">
-                    CUSTOM DATE
-                </span>
-
-
-                <div class="date-controls">
-
-                    <div class="date-input">
-
-                        <label for="fromDate">
-                            From
-                        </label>
-
-                        <input
-                            type="date"
-                            id="fromDate">
-
-                    </div>
-
-
-                    <div class="date-input">
-
-                        <label for="toDate">
-                            To
-                        </label>
-
-                        <input
-                            type="date"
-                            id="toDate">
-
-                    </div>
-
-
-                    <button
-                        id="applyDate"
-                        class="apply-button">
-
-                        Apply
-
-                    </button>
-
-
-                    <button
-                        id="resetDate"
-                        class="reset-button">
-
-                        Reset
-
-                    </button>
+                    <input
+                        type="date"
+                        id="fromDate"
+                    >
 
                 </div>
+
+
+                <div>
+
+                    <label>
+                        To
+                    </label>
+
+                    <input
+                        type="date"
+                        id="toDate"
+                    >
+
+                </div>
+
+
+                <button
+                    id="applyDate"
+                    class="apply-button"
+                >
+                    Apply
+                </button>
+
+
+                <button
+                    id="resetDate"
+                    class="reset-button"
+                >
+                    Reset
+                </button>
 
             </div>
 
@@ -337,489 +297,568 @@
 
 
 
-        <!-- =================================================
+        <!-- ==================================================
              KPI CARDS
-        ================================================== -->
+        =================================================== -->
 
         <section class="kpi-grid">
 
 
-            <!-- PA -->
-
-            <article class="kpi-card">
+            <div class="kpi-card">
 
                 <div class="kpi-header">
-
-                    <span>
-                        Plant Availability
-                    </span>
-
-                    <div class="kpi-symbol">
-                        PA
-                    </div>
-
+                    Plant Availability
+                    <span>PA</span>
                 </div>
 
-                <strong
-                    id="kpiPA"
-                    class="kpi-value">
-
+                <strong id="kpiPA">
                     —
-
-                </strong>
-
-                <small
-                    id="kpiPADetail">
-
-                    Latest available day
-
-                </small>
-
-            </article>
-
-
-
-            <!-- PR -->
-
-            <article class="kpi-card">
-
-                <div class="kpi-header">
-
-                    <span>
-                        Performance Ratio
-                    </span>
-
-                    <div class="kpi-symbol">
-                        PR
-                    </div>
-
-                </div>
-
-                <strong
-                    id="kpiPR"
-                    class="kpi-value">
-
-                    —
-
-                </strong>
-
-                <small
-                    id="kpiPRDetail">
-
-                    Latest available day
-
-                </small>
-
-            </article>
-
-
-
-            <!-- AEY -->
-
-            <article class="kpi-card">
-
-                <div class="kpi-header">
-
-                    <span>
-                        Annual Energy Yield
-                    </span>
-
-                    <div class="kpi-symbol">
-                        AEY
-                    </div>
-
-                </div>
-
-                <strong
-                    id="kpiAEY"
-                    class="kpi-value">
-
-                    —
-
                 </strong>
 
                 <small>
-
-                    kWh/kWp cumulative
-
+                    Latest available value
                 </small>
 
-            </article>
+            </div>
 
 
-
-            <!-- GENERATION -->
-
-            <article class="kpi-card">
+            <div class="kpi-card">
 
                 <div class="kpi-header">
-
-                    <span>
-                        Actual Generation
-                    </span>
-
-                    <div class="kpi-symbol">
-                        MWh
-                    </div>
-
+                    Performance Ratio
+                    <span>PR</span>
                 </div>
 
-                <strong
-                    id="kpiGen"
-                    class="kpi-value">
-
+                <strong id="kpiPR">
                     —
-
                 </strong>
 
-                <small
-                    id="kpiGenDetail">
-
-                    Latest 220 kV net export
-
+                <small>
+                    Latest available value
                 </small>
 
-            </article>
+            </div>
+
+
+            <div class="kpi-card">
+
+                <div class="kpi-header">
+                    Annual Energy Yield
+                    <span>AEY</span>
+                </div>
+
+                <strong id="kpiAEY">
+                    —
+                </strong>
+
+                <small>
+                    kWh/kWp
+                </small>
+
+            </div>
+
+
+            <div class="kpi-card">
+
+                <div class="kpi-header">
+                    Actual Generation
+                    <span>MWh</span>
+                </div>
+
+                <strong id="kpiGen">
+                    —
+                </strong>
+
+                <small>
+                    220 kV net export
+                </small>
+
+            </div>
 
         </section>
 
 
 
-        <!-- =================================================
-             CHART GRID
-        ================================================== -->
-
-        <section class="chart-grid">
-
-
-            <!-- =============================================
-                 PLANT AVAILABILITY
-            ============================================== -->
-
-            <article class="chart-card wide">
-
-                <div class="chart-header">
-
-                    <div>
-
-                        <h2>
-                            Plant Availability
-                        </h2>
-
-                        <p>
-                            Daily plant availability recorded
-                            in the DGR.
-                        </p>
-
-                    </div>
-
-                    <span class="chart-unit">
-                        %
-                    </span>
-
-                </div>
-
-
-                <div class="chart-container">
-
-                    <canvas id="paChart"></canvas>
-
-                </div>
-
-            </article>
-
-
-
-            <!-- =============================================
-                 PERFORMANCE RATIO
-            ============================================== -->
-
-            <article class="chart-card wide">
-
-                <div class="chart-header">
-
-                    <div>
-
-                        <h2>
-                            Performance Ratio
-                        </h2>
-
-                        <p>
-                            Daily performance ratio of the
-                            solar plant.
-                        </p>
-
-                    </div>
-
-                    <span class="chart-unit">
-                        %
-                    </span>
-
-                </div>
-
-
-                <div class="chart-container">
-
-                    <canvas id="prChart"></canvas>
-
-                </div>
-
-            </article>
-
-
-
-            <!-- =============================================
-                 GHI
-            ============================================== -->
-
-            <article class="chart-card">
-
-                <div class="chart-header">
-
-                    <div>
-
-                        <h2>
-                            GHI
-                        </h2>
-
-                        <p>
-                            Global Horizontal Irradiance.
-                        </p>
-
-                    </div>
-
-                    <span class="chart-unit">
-                        kWh/m²
-                    </span>
-
-                </div>
-
-
-                <div class="chart-container">
-
-                    <canvas id="ghiChart"></canvas>
-
-                </div>
-
-            </article>
-
-
-
-            <!-- =============================================
-                 GII / POA
-            ============================================== -->
-
-            <article class="chart-card">
-
-                <div class="chart-header">
-
-                    <div>
-
-                        <h2>
-                            GII / POA
-                        </h2>
-
-                        <p>
-                            Plane-of-array irradiance
-                            from the DGR.
-                        </p>
-
-                    </div>
-
-                    <span class="chart-unit">
-                        kWh/m²
-                    </span>
-
-                </div>
-
-
-                <div class="chart-container">
-
-                    <canvas id="giiChart"></canvas>
-
-                </div>
-
-            </article>
-
-
-
-            <!-- =============================================
-                 MEASURED VS ACTUAL GENERATION
-            ============================================== -->
-
-            <article class="chart-card wide">
-
-                <div class="chart-header">
-
-                    <div>
-
-                        <h2>
-                            Measured Generation vs Actual Generation
-                        </h2>
-
-                        <p>
-                            Comparison of inverter export
-                            against 220 kV net export.
-                        </p>
-
-                    </div>
-
-                    <span class="chart-unit">
-                        kWh
-                    </span>
-
-                </div>
-
-
-                <div class="chart-container chart-large">
-
-                    <canvas id="generationChart"></canvas>
-
-                </div>
-
-            </article>
-
-
-
-            <!-- =============================================
-                 ANNUAL ENERGY YIELD
-            ============================================== -->
-
-            <article class="chart-card wide">
-
-                <div class="chart-header">
-
-                    <div>
-
-                        <h2>
-                            Annual Energy Yield
-                        </h2>
-
-                        <p>
-                            Cumulative net generation divided
-                            by installed DC capacity.
-                        </p>
-
-                    </div>
-
-                    <span class="chart-unit">
-                        kWh/kWp
-                    </span>
-
-                </div>
-
-
-                <div class="chart-container">
-
-                    <canvas id="aeyChart"></canvas>
-
-                </div>
-
-            </article>
-
-
-        </section>
-
-
-
-        <!-- =================================================
-             DGR UPLOAD SECTION
-        ================================================== -->
+        <!-- ==================================================
+             PERFORMANCE
+        =================================================== -->
 
         <section
-            id="upload"
-            class="upload-section">
+            id="performance"
+            class="dashboard-section"
+        >
 
-
-            <div class="upload-header">
+            <div class="section-heading">
 
                 <div>
 
-                    <div class="eyebrow">
-                        DATA ACQUISITION
+                    <span class="eyebrow">
+                        PERFORMANCE
+                    </span>
+
+                    <h2>
+                        Plant Performance
+                    </h2>
+
+                </div>
+
+            </div>
+
+
+            <div class="chart-grid">
+
+
+                <!-- PA LINE -->
+
+                <article class="chart-card">
+
+                    <div class="chart-title">
+
+                        <h3>
+                            Plant Availability — Trend
+                        </h3>
+
+                        <span>
+                            LINE
+                        </span>
+
                     </div>
+
+                    <div class="chart-container">
+
+                        <canvas id="paChart"></canvas>
+
+                    </div>
+
+                </article>
+
+
+                <!-- PA BAR -->
+
+                <article class="chart-card">
+
+                    <div class="chart-title">
+
+                        <h3>
+                            Plant Availability — Daily
+                        </h3>
+
+                        <span>
+                            BAR
+                        </span>
+
+                    </div>
+
+                    <div class="chart-container">
+
+                        <canvas id="paBarChart"></canvas>
+
+                    </div>
+
+                </article>
+
+
+                <!-- PR LINE -->
+
+                <article class="chart-card">
+
+                    <div class="chart-title">
+
+                        <h3>
+                            Performance Ratio — Trend
+                        </h3>
+
+                        <span>
+                            LINE
+                        </span>
+
+                    </div>
+
+                    <div class="chart-container">
+
+                        <canvas id="prChart"></canvas>
+
+                    </div>
+
+                </article>
+
+
+                <!-- PR BAR -->
+
+                <article class="chart-card">
+
+                    <div class="chart-title">
+
+                        <h3>
+                            Performance Ratio — Daily
+                        </h3>
+
+                        <span>
+                            BAR
+                        </span>
+
+                    </div>
+
+                    <div class="chart-container">
+
+                        <canvas id="prBarChart"></canvas>
+
+                    </div>
+
+                </article>
+
+
+                <!-- AEY -->
+
+                <article class="chart-card wide">
+
+                    <div class="chart-title">
+
+                        <h3>
+                            Annual Energy Yield
+                        </h3>
+
+                        <span>
+                            AREA / LINE
+                        </span>
+
+                    </div>
+
+                    <div class="chart-container large">
+
+                        <canvas id="aeyChart"></canvas>
+
+                    </div>
+
+                </article>
+
+            </div>
+
+        </section>
+
+
+
+        <!-- ==================================================
+             IRRADIANCE
+        =================================================== -->
+
+        <section
+            id="irradiance"
+            class="dashboard-section"
+        >
+
+            <div class="section-heading">
+
+                <div>
+
+                    <span class="eyebrow">
+                        SOLAR RESOURCE
+                    </span>
+
+                    <h2>
+                        Irradiance Analysis
+                    </h2>
+
+                </div>
+
+            </div>
+
+
+            <div class="chart-grid">
+
+
+                <!-- GHI BAR -->
+
+                <article class="chart-card">
+
+                    <div class="chart-title">
+
+                        <h3>
+                            GHI
+                        </h3>
+
+                        <span>
+                            BAR
+                        </span>
+
+                    </div>
+
+                    <div class="chart-container">
+
+                        <canvas id="ghiChart"></canvas>
+
+                    </div>
+
+                </article>
+
+
+                <!-- GHI LINE -->
+
+                <article class="chart-card">
+
+                    <div class="chart-title">
+
+                        <h3>
+                            GHI Trend
+                        </h3>
+
+                        <span>
+                            LINE
+                        </span>
+
+                    </div>
+
+                    <div class="chart-container">
+
+                        <canvas id="ghiLineChart"></canvas>
+
+                    </div>
+
+                </article>
+
+
+                <!-- POA -->
+
+                <article class="chart-card wide">
+
+                    <div class="chart-title">
+
+                        <h3>
+                            GII / POA Irradiance
+                        </h3>
+
+                        <span>
+                            MULTI-LINE
+                        </span>
+
+                    </div>
+
+                    <div class="chart-container large">
+
+                        <canvas id="giiChart"></canvas>
+
+                    </div>
+
+                </article>
+
+
+                <!-- SCATTER -->
+
+                <article class="chart-card wide">
+
+                    <div class="chart-title">
+
+                        <h3>
+                            Irradiance vs Generation
+                        </h3>
+
+                        <span>
+                            SCATTER
+                        </span>
+
+                    </div>
+
+                    <div class="chart-container large">
+
+                        <canvas id="scatterChart"></canvas>
+
+                    </div>
+
+                </article>
+
+            </div>
+
+        </section>
+
+
+
+        <!-- ==================================================
+             GENERATION
+        =================================================== -->
+
+        <section
+            id="generation"
+            class="dashboard-section"
+        >
+
+            <div class="section-heading">
+
+                <div>
+
+                    <span class="eyebrow">
+                        ENERGY GENERATION
+                    </span>
+
+                    <h2>
+                        Generation Analysis
+                    </h2>
+
+                </div>
+
+            </div>
+
+
+            <div class="chart-grid">
+
+
+                <!-- GENERATION LINE -->
+
+                <article class="chart-card wide">
+
+                    <div class="chart-title">
+
+                        <h3>
+                            Measured vs Actual Generation
+                        </h3>
+
+                        <span>
+                            LINE
+                        </span>
+
+                    </div>
+
+                    <div class="chart-container large">
+
+                        <canvas id="generationChart"></canvas>
+
+                    </div>
+
+                </article>
+
+
+                <!-- GENERATION BAR -->
+
+                <article class="chart-card">
+
+                    <div class="chart-title">
+
+                        <h3>
+                            Generation Comparison
+                        </h3>
+
+                        <span>
+                            BAR
+                        </span>
+
+                    </div>
+
+                    <div class="chart-container">
+
+                        <canvas id="generationBarChart"></canvas>
+
+                    </div>
+
+                </article>
+
+
+                <!-- GENERATION PIE -->
+
+                <article class="chart-card">
+
+                    <div class="chart-title">
+
+                        <h3>
+                            Generation Composition
+                        </h3>
+
+                        <span>
+                            PIE
+                        </span>
+
+                    </div>
+
+                    <div class="chart-container">
+
+                        <canvas id="generationPieChart"></canvas>
+
+                    </div>
+
+                </article>
+
+
+            </div>
+
+        </section>
+
+
+
+        <!-- ==================================================
+             UPLOAD
+        =================================================== -->
+
+        <section
+            id="upload"
+            class="upload-section"
+        >
+
+            <div class="section-heading">
+
+                <div>
+
+                    <span class="eyebrow">
+                        DATA ACQUISITION
+                    </span>
 
                     <h2>
                         Upload Daily Generation Report
                     </h2>
 
                     <p>
-                        Upload the plant's Excel or CSV DGR.
+                        Upload the Excel or CSV DGR.
                         The dashboard will automatically
-                        read the Daily_KPI data and update
-                        all graphs.
+                        process the available plant data.
                     </p>
 
                 </div>
 
-
-                <label
-                    for="dgrInput"
-                    class="upload-button secondary">
-
-                    Choose DGR
-
-                </label>
-
             </div>
 
 
-
-            <!-- DROPZONE -->
-
             <div
                 id="dropzone"
-                class="dropzone">
+                class="dropzone"
+            >
 
                 <div class="drop-icon">
                     ↑
                 </div>
 
                 <strong>
-                    Drop your DGR file here
+                    Drop DGR file here
                 </strong>
 
                 <span>
-                    or click to select an
-                    Excel / CSV file
+                    or click to browse
                 </span>
 
                 <small>
-                    Supported formats:
-                    .xlsx, .xls, .csv
+                    Excel (.xlsx / .xls) or CSV
                 </small>
 
             </div>
 
 
-
-            <!-- FILE MAPPING INFORMATION -->
-
             <div
                 id="mappingInfo"
-                class="mapping-info">
-
-                Upload a DGR to see the detected
-                data mapping.
-
+                class="mapping-info"
+            >
+                No DGR loaded yet.
             </div>
 
         </section>
 
 
 
-        <!-- =================================================
-             FOOTER
-        ================================================== -->
+        <!-- FOOTER -->
 
         <footer class="footer">
 
             <span>
-                SRI1PL Solar DGR Analytics
+                SRI1PL Solar Analytics
             </span>
 
             <span>
-                Interactive Performance Monitoring
+                Interactive DGR Monitoring System
             </span>
 
         </footer>
@@ -830,12 +869,7 @@
 </div>
 
 
-<!-- =========================================================
-     APPLICATION JAVASCRIPT
-     ========================================================== -->
-
 <script src="app.js"></script>
-
 
 </body>
 
