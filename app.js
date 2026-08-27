@@ -1,7 +1,7 @@
 /* =========================================================
    SOLAR DGR ANALYTICS
    app.js
-   ========================================================= */
+========================================================= */
 
 "use strict";
 
@@ -10,28 +10,82 @@
 ========================================================= */
 
 let workbook = null;
-let uploadedFile = null;
 
-let dashboardData = [];
-let dailyKPIData = [];
-let paData = [];
-let curtailmentData = [];
-let annualKPIData = [];
+let charts = {
+    dashboardPR: null,
+    dashboardLoss: null,
+    pa: null,
+    pr: null,
+    hours: null,
+    loss: null,
+    curtailment: null,
+    energy: null
+};
 
-const charts = {};
+let currentFile = null;
 
 
 /* =========================================================
-   DOM READY
+   DOM HELPERS
+========================================================= */
+
+const $ = (id) => document.getElementById(id);
+
+function setText(id, value) {
+    const el = $(id);
+
+    if (el) {
+        el.textContent = value;
+    }
+}
+
+function show(id) {
+    const el = $(id);
+
+    if (el) {
+        el.classList.remove("hidden");
+    }
+}
+
+function hide(id) {
+    const el = $(id);
+
+    if (el) {
+        el.classList.add("hidden");
+    }
+}
+
+
+/* =========================================================
+   DOM ELEMENTS
+========================================================= */
+
+const dgrFile = $("dgrFile");
+const dropZone = $("dropZone");
+const fileInfo = $("fileInfo");
+const workbookStatus = $("workbookStatus");
+const sheetBadges = $("sheetBadges");
+const removeFile = $("removeFile");
+const emptyState = $("emptyState");
+const statusText = $("statusText");
+const sidebarFileName = $("sidebarFileName");
+
+
+/* =========================================================
+   INITIALISE
 ========================================================= */
 
 document.addEventListener("DOMContentLoaded", () => {
 
     initialiseNavigation();
     initialiseUpload();
-    initialiseRemoveButton();
 
-    hideDashboardUntilUpload();
+    /*
+       Hide analytics sections until a DGR is uploaded.
+       The upload area itself remains visible.
+    */
+
+    hideAnalyticsSections();
 
 });
 
@@ -44,20 +98,22 @@ function initialiseNavigation() {
 
     const navItems = document.querySelectorAll(".nav-item");
 
-    navItems.forEach(item => {
+    navItems.forEach((button) => {
 
-        item.addEventListener("click", () => {
+        button.addEventListener("click", () => {
 
-            const targetId = item.dataset.target;
-            const target = document.getElementById(targetId);
+            const targetId = button.dataset.target;
+            const target = $(targetId);
 
-            if (!target) return;
+            if (!target) {
+                return;
+            }
 
-            navItems.forEach(nav => {
-                nav.classList.remove("active");
+            navItems.forEach((item) => {
+                item.classList.remove("active");
             });
 
-            item.classList.add("active");
+            button.classList.add("active");
 
             target.scrollIntoView({
                 behavior: "smooth",
@@ -72,266 +128,273 @@ function initialiseNavigation() {
 
 
 /* =========================================================
-   UPLOAD
+   UPLOAD INITIALISATION
 ========================================================= */
 
 function initialiseUpload() {
 
-    const fileInput = document.getElementById("dgrFile");
-    const dropZone = document.getElementById("dropZone");
+    if (!dgrFile) {
+        console.error("DGR file input not found.");
+        return;
+    }
 
-    if (!fileInput) return;
+    /*
+       Normal file selection
+    */
 
-    fileInput.addEventListener("change", event => {
+    dgrFile.addEventListener("change", async (event) => {
 
-        const file = event.target.files?.[0];
+        const files = event.target.files;
 
-        if (file) {
-            processDGR(file);
-        }
-
-    });
-
-
-    if (!dropZone) return;
-
-
-    dropZone.addEventListener("click", () => {
-        fileInput.click();
-    });
-
-
-    dropZone.addEventListener("dragover", event => {
-
-        event.preventDefault();
-
-        dropZone.classList.add("dragging");
-
-    });
-
-
-    dropZone.addEventListener("dragleave", () => {
-
-        dropZone.classList.remove("dragging");
-
-    });
-
-
-    dropZone.addEventListener("drop", event => {
-
-        event.preventDefault();
-
-        dropZone.classList.remove("dragging");
-
-        const file = event.dataTransfer.files?.[0];
-
-        if (!file) return;
-
-        const valid =
-            file.name.toLowerCase().endsWith(".xlsx") ||
-            file.name.toLowerCase().endsWith(".xls") ||
-            file.name.toLowerCase().endsWith(".csv");
-
-        if (!valid) {
-
-            setStatus(
-                "Please upload an Excel (.xlsx/.xls) or CSV file."
-            );
-
+        if (!files || !files.length) {
             return;
         }
 
-        processDGR(file);
+        await processDGRFile(files[0]);
 
     });
 
+
+    /*
+       Drag over
+    */
+
+    if (dropZone) {
+
+        dropZone.addEventListener("dragover", (event) => {
+
+            event.preventDefault();
+
+            dropZone.classList.add("dragging");
+
+        });
+
+
+        /*
+           Drag leave
+        */
+
+        dropZone.addEventListener("dragleave", () => {
+
+            dropZone.classList.remove("dragging");
+
+        });
+
+
+        /*
+           Drop
+        */
+
+        dropZone.addEventListener("drop", async (event) => {
+
+            event.preventDefault();
+
+            dropZone.classList.remove("dragging");
+
+            const files = event.dataTransfer.files;
+
+            if (!files || !files.length) {
+                return;
+            }
+
+            await processDGRFile(files[0]);
+
+        });
+
+
+        /*
+           Clicking the upload panel opens file picker
+        */
+
+        dropZone.addEventListener("click", () => {
+
+            dgrFile.click();
+
+        });
+
+    }
+
+
+    /*
+       Remove uploaded file
+    */
+
+    if (removeFile) {
+
+        removeFile.addEventListener("click", () => {
+
+            resetDashboard();
+
+        });
+
+    }
+
 }
 
 
 /* =========================================================
-   REMOVE FILE
+   PROCESS DGR FILE
 ========================================================= */
 
-function initialiseRemoveButton() {
+async function processDGRFile(file) {
 
-    const removeButton = document.getElementById("removeFile");
+    if (!file) {
+        return;
+    }
 
-    if (!removeButton) return;
+    const extension = file.name
+        .split(".")
+        .pop()
+        .toLowerCase();
 
-    removeButton.addEventListener("click", resetApplication);
+    const allowed = ["xlsx", "xls", "csv"];
 
-}
+    if (!allowed.includes(extension)) {
 
-
-/* =========================================================
-   PROCESS DGR
-========================================================= */
-
-function processDGR(file) {
-
-    if (typeof XLSX === "undefined") {
-
-        setStatus(
-            "SheetJS could not be loaded. Please check the XLSX library."
+        alert(
+            "Please upload a valid Excel or CSV DGR file.\n\n" +
+            "Supported formats: .xlsx, .xls, .csv"
         );
 
         return;
     }
 
 
-    uploadedFile = file;
+    try {
 
-    setStatus("Reading DGR workbook...");
+        currentFile = file;
 
-
-    const reader = new FileReader();
-
-
-    reader.onload = event => {
-
-        try {
-
-            const arrayBuffer = event.target.result;
-
-            workbook = XLSX.read(arrayBuffer, {
-                type: "array",
-                cellDates: true,
-                cellNF: true,
-                cellText: true
-            });
-
-
-            readWorkbook();
-
-            showUploadedFile();
-
-            showDashboard();
-
-            renderAllCharts();
-
-            setStatus(
-                `${file.name} analysed successfully.`
-            );
-
-        }
-
-        catch (error) {
-
-            console.error(error);
-
-            setStatus(
-                "Unable to read the DGR. Please check the workbook format."
-            );
-
-        }
-
-    };
-
-
-    reader.onerror = () => {
-
-        setStatus(
-            "The DGR file could not be read."
+        setText(
+            "statusText",
+            "Reading DGR workbook..."
         );
 
-    };
+
+        /*
+           Read file as ArrayBuffer
+        */
+
+        const arrayBuffer = await file.arrayBuffer();
 
 
-    reader.readAsArrayBuffer(file);
+        /*
+           XLSX is provided by SheetJS in HTML.
+        */
 
-}
+        if (typeof XLSX === "undefined") {
 
-
-/* =========================================================
-   READ WORKBOOK
-========================================================= */
-
-function readWorkbook() {
-
-    dashboardData = getWorksheetData([
-        "Dashboard",
-        "DASHBOARD"
-    ]);
-
-    dailyKPIData = getWorksheetData([
-        "Daily_KPI",
-        "Daily KPI",
-        "DAILY_KPI",
-        "DailyKPI"
-    ]);
-
-    paData = getWorksheetData([
-        "PA",
-        "Plant Availability",
-        "Plant_Availability"
-    ]);
-
-    curtailmentData = getWorksheetData([
-        "Curtailment",
-        "CURTAILMENT",
-        "Grid Curtailment",
-        "Grid_Curtailment"
-    ]);
-
-    annualKPIData = getWorksheetData([
-        "Annual_KPI",
-        "Annual KPI",
-        "ANNUAL_KPI",
-        "AnnualKPI"
-    ]);
-
-
-    updateWorkbookStatus();
-
-}
-
-
-/* =========================================================
-   GET WORKSHEET
-========================================================= */
-
-function getWorksheetData(possibleNames) {
-
-    if (!workbook) return [];
-
-    let sheetName = null;
-
-
-    for (const name of possibleNames) {
-
-        if (
-            workbook.SheetNames.some(
-                actual =>
-                    actual.toLowerCase() === name.toLowerCase()
-            )
-        ) {
-
-            sheetName = workbook.SheetNames.find(
-                actual =>
-                    actual.toLowerCase() === name.toLowerCase()
+            throw new Error(
+                "SheetJS library was not loaded. " +
+                "Please check the XLSX script in your HTML."
             );
 
-            break;
         }
+
+
+        /*
+           Read workbook
+        */
+
+        workbook = XLSX.read(arrayBuffer, {
+            type: "array",
+            cellDates: true,
+            cellNF: true,
+            cellText: true
+        });
+
+
+        if (
+            !workbook ||
+            !workbook.SheetNames ||
+            workbook.SheetNames.length === 0
+        ) {
+
+            throw new Error(
+                "No worksheets were found in the uploaded file."
+            );
+
+        }
+
+
+        /*
+           Update file information
+        */
+
+        setText(
+            "fileName",
+            file.name
+        );
+
+        setText(
+            "fileSheets",
+            `${workbook.SheetNames.length} worksheet(s) detected`
+        );
+
+        setText(
+            "sidebarFileName",
+            file.name
+        );
+
+
+        /*
+           Display workbook information
+        */
+
+        renderWorkbookStatus();
+
+
+        /*
+           Hide duplicate upload prompts.
+        */
+
+        hide("emptyState");
+
+
+        /*
+           Show uploaded file information.
+        */
+
+        show("fileInfo");
+        show("workbookStatus");
+
+
+        /*
+           Show analytics
+        */
+
+        showAnalyticsSections();
+
+
+        /*
+           Analyse workbook
+        */
+
+        analyseWorkbook();
+
+
+        setText(
+            "statusText",
+            `DGR loaded successfully · ${file.name}`
+        );
+
+
+    } catch (error) {
+
+        console.error("DGR upload error:", error);
+
+        workbook = null;
+
+        setText(
+            "statusText",
+            "Unable to read the uploaded DGR."
+        );
+
+        alert(
+            "The DGR could not be read.\n\n" +
+            "Please make sure the file is a valid Excel/CSV file."
+        );
 
     }
-
-
-    if (!sheetName) return [];
-
-
-    const worksheet = workbook.Sheets[sheetName];
-
-    if (!worksheet) return [];
-
-
-    return XLSX.utils.sheet_to_json(
-        worksheet,
-        {
-            defval: null,
-            raw: true
-        }
-    );
 
 }
 
@@ -340,15 +403,13 @@ function getWorksheetData(possibleNames) {
    WORKBOOK STATUS
 ========================================================= */
 
-function updateWorkbookStatus() {
+function renderWorkbookStatus() {
 
-    const statusPanel =
-        document.getElementById("workbookStatus");
+    if (!sheetBadges || !workbook) {
+        return;
+    }
 
-    const badgeContainer =
-        document.getElementById("sheetBadges");
-
-    if (!statusPanel || !badgeContainer) return;
+    sheetBadges.innerHTML = "";
 
 
     const requiredSheets = [
@@ -360,220 +421,328 @@ function updateWorkbookStatus() {
     ];
 
 
-    badgeContainer.innerHTML = "";
+    const actualSheets = workbook.SheetNames.map(
+        normalizeSheetName
+    );
 
 
-    requiredSheets.forEach(required => {
+    requiredSheets.forEach((required) => {
 
-        const found = workbook.SheetNames.some(
+        const badge = document.createElement("div");
+
+        badge.className = "sheet-badge";
+
+
+        const found = actualSheets.some(
             sheet =>
-                sheet.toLowerCase() === required.toLowerCase()
+                sheet === normalizeSheetName(required)
         );
 
 
-        const badge = document.createElement("span");
+        if (found) {
 
-        badge.className =
-            found
-                ? "sheet-badge"
-                : "sheet-badge missing";
+            badge.textContent = `${required} ✓`;
 
-        badge.textContent =
-            found
-                ? `${required} ✓`
-                : `${required} — Missing`;
+        } else {
 
+            badge.textContent = `${required} — Not found`;
 
-        badgeContainer.appendChild(badge);
+            badge.classList.add("missing");
 
-    });
+        }
 
 
-    statusPanel.classList.remove("hidden");
+        sheetBadges.appendChild(badge);
 
-}
-
-
-/* =========================================================
-   FILE INFORMATION
-========================================================= */
-
-function showUploadedFile() {
-
-    const fileInfo =
-        document.getElementById("fileInfo");
-
-    const fileName =
-        document.getElementById("fileName");
-
-    const fileSheets =
-        document.getElementById("fileSheets");
-
-    const sidebarFileName =
-        document.getElementById("sidebarFileName");
-
-
-    if (fileName) {
-        fileName.textContent = uploadedFile.name;
-    }
-
-
-    if (fileSheets && workbook) {
-
-        fileSheets.textContent =
-            `${workbook.SheetNames.length} worksheets detected`;
-
-    }
-
-
-    if (sidebarFileName) {
-        sidebarFileName.textContent =
-            uploadedFile.name;
-    }
-
-
-    if (fileInfo) {
-        fileInfo.classList.remove("hidden");
-    }
-
-}
-
-
-/* =========================================================
-   SHOW / HIDE DASHBOARD
-========================================================= */
-
-function hideDashboardUntilUpload() {
-
-    const sections = document.querySelectorAll(
-        ".dashboard-section"
-    );
-
-    sections.forEach(section => {
-        section.style.display = "none";
     });
 
 }
 
 
-function showDashboard() {
+/* =========================================================
+   SHEET NAME NORMALISATION
+========================================================= */
 
-    const sections = document.querySelectorAll(
-        ".dashboard-section"
-    );
+function normalizeSheetName(name) {
 
-    sections.forEach(section => {
-        section.style.display = "";
-    });
+    return String(name || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[\s_-]+/g, "");
+
+}
 
 
-    const emptyState =
-        document.getElementById("emptyState");
+/* =========================================================
+   FIND SHEET
+========================================================= */
 
-    if (emptyState) {
-        emptyState.classList.add("hidden");
+function getSheet(possibleNames) {
+
+    if (!workbook) {
+        return null;
     }
 
-}
+
+    const wanted = possibleNames.map(
+        normalizeSheetName
+    );
 
 
-/* =========================================================
-   STATUS
-========================================================= */
+    const actualName = workbook.SheetNames.find(
+        name =>
+            wanted.includes(
+                normalizeSheetName(name)
+            )
+    );
 
-function setStatus(message) {
 
-    const statusText =
-        document.getElementById("statusText");
-
-    if (statusText) {
-        statusText.textContent = message;
+    if (!actualName) {
+        return null;
     }
 
-}
 
-
-/* =========================================================
-   RENDER ALL
-========================================================= */
-
-function renderAllCharts() {
-
-    updateKPIs();
-
-    renderPerformanceCharts();
-
-    renderDashboardCharts();
-
-    renderPACChart();
-
-    renderCurtailmentChart();
-
-    renderEnergyChart();
+    return workbook.Sheets[actualName];
 
 }
 
 
 /* =========================================================
-   KPI CARDS
+   SHEET TO JSON
 ========================================================= */
 
-function updateKPIs() {
+function sheetToRows(sheet) {
 
-    const pa =
-        findLatestValue(
-            paData,
-            [
-                "PA",
-                "Plant Availability",
-                "Plant Availability (%)",
-                "Availability"
-            ]
+    if (!sheet) {
+        return [];
+    }
+
+
+    return XLSX.utils.sheet_to_json(
+        sheet,
+        {
+            header: 1,
+            defval: null,
+            raw: true,
+            blankrows: false
+        }
+    );
+
+}
+
+
+/* =========================================================
+   WORKBOOK ANALYSIS
+========================================================= */
+
+function analyseWorkbook() {
+
+    /*
+       Destroy old charts first.
+    */
+
+    destroyCharts();
+
+
+    /*
+       Dashboard
+    */
+
+    analyseDailyKPI();
+
+
+    /*
+       PA
+    */
+
+    analysePA();
+
+
+    /*
+       Curtailment
+    */
+
+    analyseCurtailment();
+
+
+    /*
+       Annual energy
+    */
+
+    analyseAnnualEnergy();
+
+}
+
+
+/* =========================================================
+   DAILY KPI
+========================================================= */
+
+function analyseDailyKPI() {
+
+    const sheet = getSheet([
+        "Daily_KPI",
+        "Daily KPI",
+        "DailyKPI"
+    ]);
+
+
+    if (!sheet) {
+
+        setText("dashboardPR", "—");
+        setText("dashboardLoss", "—");
+        setText("dashboardHours", "—");
+
+        return;
+
+    }
+
+
+    const rows = sheetToRows(sheet);
+
+
+    /*
+       Column indexes:
+       I  = 9  -> index 8
+       V  = 22 -> index 21
+       AD = 30 -> index 29
+
+       Excel is 1-based.
+       JavaScript arrays are 0-based.
+    */
+
+    const dateIndex = findDateColumn(rows);
+
+    const hoursIndex = 8;
+    const prIndex = 21;
+    const lossIndex = 29;
+
+
+    const records = [];
+
+
+    for (let i = 0; i < rows.length; i++) {
+
+        const row = rows[i];
+
+        if (!row) {
+            continue;
+        }
+
+
+        const date = parseExcelDate(
+            dateIndex >= 0 ? row[dateIndex] : null
         );
 
 
-    const pr =
-        getColumnValue(
-            dailyKPIData,
-            21
+        const pr = parseNumber(
+            row[prIndex]
         );
 
 
-    const loss =
-        getColumnValue(
-            dailyKPIData,
-            29
+        const hours = parseNumber(
+            row[hoursIndex]
         );
 
 
-    const hours =
-        getColumnValue(
-            dailyKPIData,
-            8
+        const loss = parseNumber(
+            row[lossIndex]
         );
 
 
-    setText(
-        "dashboardPA",
-        formatPercent(pa)
+        /*
+           Ignore completely empty records.
+        */
+
+        if (
+            date === null &&
+            pr === null &&
+            hours === null &&
+            loss === null
+        ) {
+            continue;
+        }
+
+
+        records.push({
+            date,
+            pr,
+            hours,
+            loss
+        });
+
+    }
+
+
+    /*
+       Remove probable header rows / invalid dates
+       when possible.
+    */
+
+    const usableRecords = records.filter(
+        record =>
+            record.date !== null ||
+            record.pr !== null ||
+            record.hours !== null ||
+            record.loss !== null
     );
 
 
-    setText(
-        "dashboardPR",
-        formatPercent(pr)
+    if (!usableRecords.length) {
+        return;
+    }
+
+
+    /*
+       Sort chronologically.
+    */
+
+    usableRecords.sort(
+        (a, b) =>
+            (a.date || 0) - (b.date || 0)
     );
 
 
-    setText(
-        "dashboardLoss",
-        formatPercent(loss)
-    );
+    /*
+       Latest available values
+    */
+
+    const latest = [...usableRecords]
+        .reverse()
+        .find(
+            row =>
+                row.pr !== null ||
+                row.hours !== null ||
+                row.loss !== null
+        );
 
 
-    setText(
-        "dashboardHours",
-        formatNumber(hours, 2)
+    if (latest) {
+
+        setText(
+            "dashboardPR",
+            formatPercent(latest.pr)
+        );
+
+        setText(
+            "dashboardHours",
+            formatNumber(latest.hours)
+        );
+
+        setText(
+            "dashboardLoss",
+            formatPercent(latest.loss)
+        );
+
+    }
+
+
+    /*
+       Create charts
+    */
+
+    createPerformanceCharts(
+        usableRecords
     );
 
 }
@@ -583,99 +752,81 @@ function updateKPIs() {
    PERFORMANCE CHARTS
 ========================================================= */
 
-function renderPerformanceCharts() {
+function createPerformanceCharts(records) {
 
-    const dates =
-        dailyKPIData.map(
-            row => getDateFromRow(row)
-        );
-
-
-    const prValues =
-        dailyKPIData.map(
-            row => parseNumber(getColumn(row, 21))
-        );
+    const labels = records.map(
+        record => record.date
+    );
 
 
-    const hoursValues =
-        dailyKPIData.map(
-            row => parseNumber(getColumn(row, 8))
-        );
+    /*
+       PR
+    */
+
+    const prData = records.map(
+        record => record.pr
+    );
 
 
-    const lossValues =
-        dailyKPIData.map(
-            row => parseNumber(getColumn(row, 29))
-        );
-
-
-    createDateLineChart(
-        "prChart",
-        dates,
-        prValues,
+    createScatterChart(
+        "dashboardPRChart",
         "Performance Ratio",
+        labels,
+        prData,
         true
     );
 
 
-    createDateLineChart(
+    createScatterChart(
+        "prChart",
+        "Performance Ratio",
+        labels,
+        prData,
+        true
+    );
+
+
+    /*
+       Hours
+    */
+
+    const hoursData = records.map(
+        record => record.hours
+    );
+
+
+    createLineChart(
         "hoursChart",
-        dates,
-        hoursValues,
         "Operating Hours",
+        labels,
+        hoursData,
         false
     );
 
 
-    createDateLineChart(
-        "lossChart",
-        dates,
-        lossValues,
-        "System Losses",
-        true
-    );
+    /*
+       Loss
+    */
 
-}
-
-
-/* =========================================================
-   DASHBOARD CHARTS
-========================================================= */
-
-function renderDashboardCharts() {
-
-    const dates =
-        dailyKPIData.map(
-            row => getDateFromRow(row)
-        );
-
-
-    const prValues =
-        dailyKPIData.map(
-            row => parseNumber(getColumn(row, 21))
-        );
-
-
-    const lossValues =
-        dailyKPIData.map(
-            row => parseNumber(getColumn(row, 29))
-        );
-
-
-    createDateLineChart(
-        "dashboardPRChart",
-        dates,
-        prValues,
-        "Performance Ratio",
-        true
+    const lossData = records.map(
+        record => record.loss
     );
 
 
-    createDateLineChart(
+    createLineChart(
         "dashboardLossChart",
-        dates,
-        lossValues,
         "System Losses",
+        labels,
+        lossData,
+        true
+    );
+
+
+    createLineChart(
+        "lossChart",
+        "System Losses",
+        labels,
+        lossData,
         true
     );
 
@@ -683,598 +834,162 @@ function renderDashboardCharts() {
 
 
 /* =========================================================
-   DATE CHART
+   PA ANALYSIS
 ========================================================= */
 
-function createDateLineChart(
-    canvasId,
-    dates,
-    values,
-    label,
-    percentage
-) {
+function analysePA() {
 
-    const canvas =
-        document.getElementById(canvasId);
+    const sheet = getSheet([
+        "PA",
+        "Plant Availability",
+        "PA Analysis"
+    ]);
 
-    if (!canvas) return;
 
-
-    destroyChart(canvasId);
-
-
-    const validData = [];
-
-
-    for (let i = 0; i < dates.length; i++) {
-
-        if (
-            dates[i] instanceof Date &&
-            !isNaN(dates[i].getTime()) &&
-            Number.isFinite(values[i])
-        ) {
-
-            validData.push({
-                x: dates[i],
-                y: values[i]
-            });
-
-        }
-
-    }
-
-
-    validData.sort(
-        (a, b) => a.x - b.x
-    );
-
-
-    charts[canvasId] =
-        new Chart(canvas, {
-
-            type: "line",
-
-            data: {
-
-                datasets: [
-
-                    {
-                        label,
-
-                        data: validData,
-
-                        borderWidth: 2,
-
-                        pointRadius: 3,
-
-                        pointHoverRadius: 5,
-
-                        tension: 0.25,
-
-                        fill: false
-                    }
-
-                ]
-
-            },
-
-
-            options: {
-
-                responsive: true,
-
-                maintainAspectRatio: false,
-
-                animation: false,
-
-
-                interaction: {
-
-                    mode: "nearest",
-
-                    intersect: false
-
-                },
-
-
-                scales: {
-
-                    x: {
-
-                        type: "linear",
-
-                        title: {
-                            display: false
-                        },
-
-
-                        ticks: {
-
-                            autoSkip: false,
-
-                            maxRotation: 0,
-
-                            callback: function(value) {
-
-                                return formatDateTick(
-                                    value,
-                                    this.chart
-                                );
-
-                            }
-
-                        },
-
-
-                        grid: {
-                            display: false
-                        }
-
-                    },
-
-
-                    y: {
-
-                        beginAtZero: false,
-
-                        ticks: {
-
-                            callback: value => {
-
-                                if (percentage) {
-
-                                    return formatPercent(
-                                        value
-                                    );
-
-                                }
-
-                                return value;
-
-                            }
-
-                        }
-
-                    }
-
-                },
-
-
-                plugins: {
-
-                    legend: {
-                        display: false
-                    },
-
-
-                    tooltip: {
-
-                        callbacks: {
-
-                            title: items => {
-
-                                if (!items.length)
-                                    return "";
-
-                                const raw =
-                                    items[0].raw;
-
-                                if (
-                                    !raw ||
-                                    !(raw.x instanceof Date)
-                                ) {
-                                    return "";
-                                }
-
-                                return formatFullDate(
-                                    raw.x
-                                );
-
-                            },
-
-
-                            label: context => {
-
-                                const value =
-                                    context.parsed.y;
-
-                                return percentage
-                                    ? `${label}: ${formatPercent(value)}`
-                                    : `${label}: ${value}`;
-
-                            }
-
-                        }
-
-                    }
-
-                }
-
-            }
-
-        });
-
-}
-
-
-/* =========================================================
-   DATE TICK FORMAT
-========================================================= */
-
-function formatDateTick(value, chart) {
-
-    const xScale =
-        chart.scales.x;
-
-    if (!xScale) return "";
-
-
-    const min =
-        xScale.min;
-
-    const max =
-        xScale.max;
-
-
-    const date =
-        new Date(value);
-
-
-    if (isNaN(date.getTime()))
-        return "";
-
-
-    const day =
-        date.getDate();
-
-
-    const month =
-        date.getMonth();
-
-
-    /*
-       IMPORTANT:
-
-       For a normal month:
-       1, 3, 5, 7, 9, 11...
-       or
-       2, 4, 6, 8, 10...
-
-       We deliberately calculate the interval
-       instead of allowing Chart.js to generate
-       duplicate category labels.
-    */
-
-
-    const totalDays =
-        Math.round(
-            (max - min) /
-            (24 * 60 * 60 * 1000)
-        );
-
-
-    let interval = 2;
-
-
-    if (totalDays <= 7) {
-        interval = 1;
-    }
-    else if (totalDays <= 15) {
-        interval = 2;
-    }
-    else if (totalDays <= 31) {
-        interval = 2;
-    }
-    else if (totalDays <= 90) {
-        interval = 7;
-    }
-    else {
-        interval = 14;
-    }
-
-
-    /*
-       Only display ticks at the selected interval.
-       This prevents:
-       29, 31, 31, 29
-       type glitches.
-    */
-
-    const firstDay =
-        new Date(min).getDate();
-
-
-    const offset =
-        day - firstDay;
-
-
-    if (
-        offset % interval !== 0 &&
-        day !== new Date(min).getDate() &&
-        day !== new Date(max).getDate()
-    ) {
-
-        return "";
-
-    }
-
-
-    return String(day);
-
-}
-
-
-/* =========================================================
-   PA TIMELINE
-========================================================= */
-
-function renderPACChart() {
-
-    const canvas =
-        document.getElementById("paChart");
-
-    if (!canvas) return;
-
-
-    destroyChart("paChart");
-
-
-    const records =
-        extractPARecords();
-
-
-    if (!records.length) {
-
-        clearCanvasMessage(
-            canvas,
-            "No PA breakdown records available"
-        );
-
+    if (!sheet) {
         return;
     }
 
 
-    /*
-       Horizontal floating bars.
+    const rows = sheetToRows(sheet);
 
-       Chart.js does not require a date adapter here.
-       Dates are converted into timestamps.
+
+    /*
+       Try to identify columns by header names.
     */
 
+    const headerInfo = detectPAColumns(rows);
 
-    const labels =
-        records.map(
-            record =>
-                record.equipment || "Equipment"
+
+    const records = [];
+
+
+    for (
+        let i = headerInfo.headerRow + 1;
+        i < rows.length;
+        i++
+    ) {
+
+        const row = rows[i];
+
+        if (!row) {
+            continue;
+        }
+
+
+        const start = parseExcelDate(
+            row[headerInfo.start]
         );
 
 
-    const data =
-        records.map(record => ({
-
-            x: [
-                record.start.getTime(),
-                record.end.getTime()
-            ],
-
-            y:
-                record.equipment ||
-                "Equipment"
-
-        }));
+        const end = parseExcelDate(
+            row[headerInfo.end]
+        );
 
 
-    charts.paChart =
-        new Chart(canvas, {
-
-            type: "bar",
-
-            data: {
-
-                datasets: [
-
-                    {
-                        label: "Breakdown",
-
-                        data,
-
-                        parsing: false,
-
-                        borderWidth: 0,
-
-                        barPercentage: 0.7,
-
-                        categoryPercentage: 0.8
-                    }
-
-                ]
-
-            },
+        const duration =
+            headerInfo.duration >= 0
+                ? parseNumber(
+                    row[headerInfo.duration]
+                )
+                : null;
 
 
-            options: {
-
-                indexAxis: "y",
-
-                responsive: true,
-
-                maintainAspectRatio: false,
-
-                animation: false,
+        if (!start && !end) {
+            continue;
+        }
 
 
-                scales: {
-
-                    x: {
-
-                        type: "linear",
-
-                        ticks: {
-
-                            maxRotation: 0,
-
-                            callback: value => {
-
-                                const date =
-                                    new Date(value);
-
-                                if (
-                                    isNaN(
-                                        date.getTime()
-                                    )
-                                ) {
-                                    return "";
-                                }
-
-                                return formatShortDateTime(
-                                    date
-                                );
-
-                            }
-
-                        }
-
-                    },
-
-                    y: {
-
-                        type: "category",
-
-                        labels
-
-                    }
-
-                },
-
-
-                plugins: {
-
-                    legend: {
-                        display: false
-                    },
-
-
-                    tooltip: {
-
-                        callbacks: {
-
-                            title: context => {
-
-                                const index =
-                                    context[0].dataIndex;
-
-                                return records[index]
-                                    ?.equipment ||
-                                    "Breakdown";
-
-                            },
-
-
-                            label: context => {
-
-                                const record =
-                                    records[
-                                        context.dataIndex
-                                    ];
-
-                                if (!record)
-                                    return "";
-
-                                return [
-                                    `Start: ${formatFullDateTime(record.start)}`,
-                                    `End: ${formatFullDateTime(record.end)}`,
-                                    `Duration: ${record.duration}`
-                                ];
-
-                            }
-
-                        }
-
-                    }
-
-                }
-
-            }
-
+        records.push({
+            start,
+            end,
+            duration
         });
+
+    }
+
+
+    if (!records.length) {
+        return;
+    }
+
+
+    createPAChart(records);
 
 }
 
 
 /* =========================================================
-   EXTRACT PA
+   DETECT PA COLUMNS
 ========================================================= */
 
-function extractPARecords() {
+function detectPAColumns(rows) {
 
-    const result = [];
-
-
-    paData.forEach(row => {
-
-        const start =
-            findDateByKeywords(
-                row,
-                [
-                    "start",
-                    "from",
-                    "breakdown start",
-                    "outage start"
-                ]
-            );
+    const result = {
+        headerRow: 0,
+        start: 0,
+        end: 1,
+        duration: 2
+    };
 
 
-        const end =
-            findDateByKeywords(
-                row,
-                [
-                    "end",
-                    "to",
-                    "breakdown end",
-                    "outage end"
-                ]
-            );
+    /*
+       Search first 15 rows for a useful header.
+    */
+
+    for (
+        let r = 0;
+        r < Math.min(rows.length, 15);
+        r++
+    ) {
+
+        const row = rows[r] || [];
 
 
-        if (
-            start &&
-            end &&
-            end > start
-        ) {
+        for (let c = 0; c < row.length; c++) {
 
-            const equipment =
-                findStringByKeywords(
-                    row,
-                    [
-                        "equipment",
-                        "asset",
-                        "plant",
-                        "unit",
-                        "description"
-                    ]
-                );
+            const value = String(
+                row[c] ?? ""
+            )
+                .trim()
+                .toLowerCase();
 
 
-            result.push({
+            if (
+                value.includes("start") &&
+                (
+                    value.includes("time") ||
+                    value.includes("date")
+                )
+            ) {
+                result.start = c;
+                result.headerRow = r;
+            }
 
-                start,
 
-                end,
+            if (
+                value.includes("end") &&
+                (
+                    value.includes("time") ||
+                    value.includes("date")
+                )
+            ) {
+                result.end = c;
+                result.headerRow = r;
+            }
 
-                equipment:
-                    equipment ||
-                    "PA Breakdown",
 
-                duration:
-                    formatDuration(
-                        end - start
-                    )
-
-            });
+            if (
+                value.includes("duration") ||
+                value.includes("hours")
+            ) {
+                result.duration = c;
+                result.headerRow = r;
+            }
 
         }
 
-    });
+    }
 
 
     return result;
@@ -1283,134 +998,88 @@ function extractPARecords() {
 
 
 /* =========================================================
-   CURTAILMENT
+   PA CHART
 ========================================================= */
 
-function renderCurtailmentChart() {
+function createPAChart(records) {
 
-    const canvas =
-        document.getElementById(
-            "curtailmentChart"
-        );
+    const canvas = $("paChart");
 
-    if (!canvas) return;
-
-
-    destroyChart(
-        "curtailmentChart"
-    );
-
-
-    const points = [];
-
-
-    curtailmentData.forEach(row => {
-
-        const date =
-            getDateFromRow(row);
-
-
-        const value =
-            findNumericByKeywords(
-                row,
-                [
-                    "curtailment",
-                    "loss",
-                    "mw",
-                    "generation loss",
-                    "restricted"
-                ]
-            );
-
-
-        if (
-            date &&
-            Number.isFinite(value)
-        ) {
-
-            points.push({
-
-                x: date,
-
-                y: value
-
-            });
-
-        }
-
-    });
-
-
-    points.sort(
-        (a, b) => a.x - b.x
-    );
-
-
-    const summary =
-        document.getElementById(
-            "curtailmentSummary"
-        );
-
-
-    if (!points.length) {
-
-        if (summary) {
-            summary.textContent =
-                "No curtailment records found";
-        }
-
-
-        clearCanvasMessage(
-            canvas,
-            "No curtailment data available"
-        );
-
+    if (!canvas) {
         return;
     }
 
 
-    if (summary) {
+    /*
+       Chart.js does not natively provide a true timeline
+       without a time scale plugin.
 
-        const total =
-            points.reduce(
-                (sum, point) =>
-                    sum + point.y,
-                0
-            );
+       We therefore use a horizontal bar representation
+       based on duration.
+    */
 
-        summary.textContent =
-            `${points.length} records · Total ${formatNumber(total, 2)}`;
+    const labels = records.map(
+        (record, index) => {
 
-    }
+            if (record.start) {
+
+                return formatDateTime(
+                    record.start
+                );
+
+            }
+
+            return `Breakdown ${index + 1}`;
+
+        }
+    );
 
 
-    charts.curtailmentChart =
-        new Chart(canvas, {
+    const durations = records.map(
+        record => {
 
-            type: "line",
+            if (record.duration !== null) {
+                return record.duration;
+            }
+
+
+            if (
+                record.start &&
+                record.end
+            ) {
+
+                return (
+                    record.end -
+                    record.start
+                ) / 3600000;
+
+            }
+
+            return 0;
+
+        }
+    );
+
+
+    charts.pa = new Chart(
+        canvas,
+        {
+            type: "bar",
 
             data: {
+                labels,
 
                 datasets: [
-
                     {
-                        label: "Curtailment Loss",
+                        label: "Duration (hours)",
+                        data: durations,
 
-                        data: points,
+                        borderWidth: 1,
 
-                        borderWidth: 2,
-
-                        pointRadius: 3,
-
-                        tension: 0.2,
-
-                        fill: false
+                        borderRadius: 4
                     }
-
                 ]
-
             },
-
 
             options: {
 
@@ -1420,36 +1089,7 @@ function renderCurtailmentChart() {
 
                 animation: false,
 
-
-                scales: {
-
-                    x: {
-
-                        type: "linear",
-
-                        ticks: {
-
-                            maxRotation: 0,
-
-                            callback: value =>
-                                formatDateTick(
-                                    value,
-                                    charts.curtailmentChart
-                                )
-
-                        }
-
-                    },
-
-
-                    y: {
-
-                        beginAtZero: true
-
-                    }
-
-                },
-
+                indexAxis: "y",
 
                 plugins: {
 
@@ -1457,22 +1097,40 @@ function renderCurtailmentChart() {
                         display: false
                     },
 
-
                     tooltip: {
 
                         callbacks: {
 
-                            title: items => {
+                            label: function(context) {
 
-                                const point =
-                                    items[0]?.raw;
+                                const value =
+                                    context.raw;
 
-                                return point
-                                    ? formatFullDate(point.x)
-                                    : "";
+                                return `${value.toFixed(2)} hours`;
 
                             }
 
+                        }
+
+                    }
+
+                },
+
+                scales: {
+
+                    x: {
+                        beginAtZero: true,
+
+                        title: {
+                            display: true,
+                            text: "Duration (hours)"
+                        }
+                    },
+
+                    y: {
+
+                        ticks: {
+                            autoSkip: true
                         }
 
                     }
@@ -1481,59 +1139,281 @@ function renderCurtailmentChart() {
 
             }
 
-        });
+        }
+    );
 
 }
 
 
 /* =========================================================
-   ENERGY
+   CURTAILMENT
 ========================================================= */
 
-function renderEnergyChart() {
+function analyseCurtailment() {
 
-    const canvas =
-        document.getElementById(
-            "energyChart"
-        );
-
-    if (!canvas) return;
-
-
-    destroyChart("energyChart");
+    const sheet = getSheet([
+        "Curtailment",
+        "Curtailment Records",
+        "Grid Curtailment"
+    ]);
 
 
-    const records =
-        extractEnergyRecords();
+    if (!sheet) {
 
-
-    if (!records.length) {
-
-        clearCanvasMessage(
-            canvas,
-            "No Annual KPI energy data available"
+        setText(
+            "curtailmentSummary",
+            "Curtailment worksheet not found"
         );
 
         return;
     }
 
 
-    const labels =
-        records.map(
-            record => record.month
+    const rows = sheetToRows(sheet);
+
+
+    if (!rows.length) {
+        return;
+    }
+
+
+    const dateIndex = findDateColumn(rows);
+
+
+    /*
+       Find a likely MW / loss column.
+    */
+
+    let valueIndex = findColumnByKeywords(
+        rows,
+        [
+            "curtailment",
+            "mw",
+            "loss",
+            "generation loss"
+        ]
+    );
+
+
+    if (valueIndex < 0) {
+
+        /*
+           Fall back to second column.
+        */
+
+        valueIndex = 1;
+
+    }
+
+
+    const records = [];
+
+
+    for (let i = 0; i < rows.length; i++) {
+
+        const row = rows[i];
+
+        if (!row) {
+            continue;
+        }
+
+
+        const date =
+            dateIndex >= 0
+                ? parseExcelDate(row[dateIndex])
+                : null;
+
+
+        const value =
+            parseNumber(row[valueIndex]);
+
+
+        if (
+            date === null ||
+            value === null
+        ) {
+            continue;
+        }
+
+
+        records.push({
+            date,
+            value
+        });
+
+    }
+
+
+    if (!records.length) {
+
+        setText(
+            "curtailmentSummary",
+            "No valid curtailment records found"
         );
 
+        return;
 
-    const budget =
+    }
+
+
+    records.sort(
+        (a, b) =>
+            a.date - b.date
+    );
+
+
+    const total = records.reduce(
+        (sum, item) =>
+            sum + item.value,
+        0
+    );
+
+
+    setText(
+        "curtailmentSummary",
+        `${records.length} records · Total ${formatNumber(total)}`
+    );
+
+
+    createLineChart(
+        "curtailmentChart",
+        "Curtailment",
         records.map(
-            record => record.budget
+            item => item.date
+        ),
+        records.map(
+            item => item.value
+        ),
+        false,
+        true
+    );
+
+}
+
+
+/* =========================================================
+   ANNUAL ENERGY
+========================================================= */
+
+function analyseAnnualEnergy() {
+
+    const sheet = getSheet([
+        "Annual_KPI",
+        "Annual KPI",
+        "AnnualKPI"
+    ]);
+
+
+    if (!sheet) {
+        return;
+    }
+
+
+    const rows = sheetToRows(sheet);
+
+
+    /*
+       Excel:
+       E10:E21 = Budgeted
+       F10:F21 = Measured
+
+       JavaScript:
+       E = index 4
+       F = index 5
+    */
+
+    const budgetIndex = 4;
+    const measuredIndex = 5;
+
+
+    const labels = [];
+    const budget = [];
+    const measured = [];
+
+
+    /*
+       Rows 10-21 are Excel rows.
+       JavaScript row indexes are 9-20.
+    */
+
+    for (
+        let i = 9;
+        i <= 20 && i < rows.length;
+        i++
+    ) {
+
+        const row = rows[i] || [];
+
+
+        const budgetValue =
+            parseNumber(row[budgetIndex]);
+
+
+        const measuredValue =
+            parseNumber(row[measuredIndex]);
+
+
+        if (
+            budgetValue === null &&
+            measuredValue === null
+        ) {
+            continue;
+        }
+
+
+        /*
+           Try to find month name from columns
+           before E.
+        */
+
+        let label = null;
+
+
+        for (let c = 0; c < 4; c++) {
+
+            const possible =
+                row[c];
+
+            if (
+                possible !== null &&
+                possible !== undefined &&
+                String(possible).trim() !== ""
+            ) {
+
+                label = String(
+                    possible
+                );
+
+                break;
+
+            }
+
+        }
+
+
+        if (!label) {
+
+            label = `Month ${labels.length + 1}`;
+
+        }
+
+
+        labels.push(label);
+
+        budget.push(
+            budgetValue ?? 0
         );
 
-
-    const measured =
-        records.map(
-            record => record.measured
+        measured.push(
+            measuredValue ?? 0
         );
+
+    }
+
+
+    if (!labels.length) {
+        return;
+    }
 
 
     const totalBudget =
@@ -1553,30 +1433,57 @@ function renderEnergyChart() {
 
 
     const variance =
-        totalMeasured - totalBudget;
+        totalMeasured -
+        totalBudget;
 
 
     setText(
         "totalBudget",
-        formatNumber(totalBudget, 2)
+        formatNumber(totalBudget)
     );
 
 
     setText(
         "totalMeasured",
-        formatNumber(totalMeasured, 2)
+        formatNumber(totalMeasured)
     );
 
 
     setText(
         "energyVariance",
-        formatNumber(variance, 2)
+        formatNumber(variance)
     );
 
 
-    charts.energyChart =
-        new Chart(canvas, {
+    createEnergyChart(
+        labels,
+        budget,
+        measured
+    );
 
+}
+
+
+/* =========================================================
+   ENERGY CHART
+========================================================= */
+
+function createEnergyChart(
+    labels,
+    budget,
+    measured
+) {
+
+    const canvas = $("energyChart");
+
+    if (!canvas) {
+        return;
+    }
+
+
+    charts.energy = new Chart(
+        canvas,
+        {
             type: "bar",
 
             data: {
@@ -1587,24 +1494,25 @@ function renderEnergyChart() {
 
                     {
                         label: "Budgeted Energy",
-
                         data: budget,
 
-                        borderWidth: 1
+                        borderWidth: 1,
+
+                        borderRadius: 4
                     },
 
                     {
                         label: "Measured Energy",
-
                         data: measured,
 
-                        borderWidth: 1
+                        borderWidth: 1,
+
+                        borderRadius: 4
                     }
 
                 ]
 
             },
-
 
             options: {
 
@@ -1614,35 +1522,35 @@ function renderEnergyChart() {
 
                 animation: false,
 
-
-                scales: {
-
-                    y: {
-
-                        beginAtZero: true
-
-                    },
-
-                    x: {
-
-                        ticks: {
-
-                            maxRotation: 0
-
-                        }
-
-                    }
-
+                interaction: {
+                    mode: "index",
+                    intersect: false
                 },
-
 
                 plugins: {
 
                     legend: {
+                        display: true
+                    }
 
-                        display: true,
+                },
 
-                        position: "top"
+                scales: {
+
+                    x: {
+                        ticks: {
+                            autoSkip: false
+                        }
+                    },
+
+                    y: {
+
+                        beginAtZero: true,
+
+                        title: {
+                            display: true,
+                            text: "Energy"
+                        }
 
                     }
 
@@ -1650,515 +1558,568 @@ function renderEnergyChart() {
 
             }
 
-        });
-
-}
-
-
-/* =========================================================
-   EXTRACT ENERGY DATA
-========================================================= */
-
-function extractEnergyRecords() {
-
-    const records = [];
-
-
-    /*
-       Annual_KPI:
-       E10:E21 = Budgeted Energy
-       F10:F21 = Measured Energy
-
-       sheet_to_json() with normal headers means
-       the actual property names can vary.
-
-       Therefore we also support positional
-       extraction.
-    */
-
-
-    if (!workbook) return records;
-
-
-    const sheetName =
-        workbook.SheetNames.find(
-            name =>
-                name.toLowerCase() ===
-                "annual_kpi"
-        );
-
-
-    if (!sheetName) return records;
-
-
-    const worksheet =
-        workbook.Sheets[sheetName];
-
-
-    for (let rowNumber = 10; rowNumber <= 21; rowNumber++) {
-
-        const budgetCell =
-            worksheet[`E${rowNumber}`];
-
-
-        const measuredCell =
-            worksheet[`F${rowNumber}`];
-
-
-        const budget =
-            parseNumber(
-                budgetCell?.v
-            );
-
-
-        const measured =
-            parseNumber(
-                measuredCell?.v
-            );
-
-
-        if (
-            Number.isFinite(budget) ||
-            Number.isFinite(measured)
-        ) {
-
-            records.push({
-
-                month:
-                    getMonthName(
-                        rowNumber - 10
-                    ),
-
-                budget:
-                    Number.isFinite(budget)
-                        ? budget
-                        : 0,
-
-                measured:
-                    Number.isFinite(measured)
-                        ? measured
-                        : 0
-
-            });
-
         }
-
-    }
-
-
-    return records;
-
-}
-
-
-/* =========================================================
-   MONTH NAME
-========================================================= */
-
-function getMonthName(index) {
-
-    const months = [
-        "Jan",
-        "Feb",
-        "Mar",
-        "Apr",
-        "May",
-        "Jun",
-        "Jul",
-        "Aug",
-        "Sep",
-        "Oct",
-        "Nov",
-        "Dec"
-    ];
-
-
-    return months[index] || `Month ${index + 1}`;
-
-}
-
-
-/* =========================================================
-   COLUMN HELPERS
-========================================================= */
-
-function getColumn(row, zeroBasedIndex) {
-
-    if (!row) return null;
-
-
-    const keys =
-        Object.keys(row);
-
-
-    return keys[zeroBasedIndex] !== undefined
-        ? row[keys[zeroBasedIndex]]
-        : null;
-
-}
-
-
-function getColumnValue(rows, zeroBasedIndex) {
-
-    if (!rows.length) return null;
-
-
-    const last =
-        rows[rows.length - 1];
-
-
-    return getColumn(
-        last,
-        zeroBasedIndex
     );
 
 }
 
 
 /* =========================================================
-   DATE EXTRACTION
+   CHART HELPERS
 ========================================================= */
 
-function getDateFromRow(row) {
+function createLineChart(
+    canvasId,
+    label,
+    dates,
+    values,
+    percentage = false,
+    showTime = false
+) {
 
-    if (!row) return null;
+    const canvas = $(canvasId);
 
-
-    /*
-       First look for columns whose names
-       explicitly indicate date.
-    */
-
-    const keys =
-        Object.keys(row);
-
-
-    for (const key of keys) {
-
-        const lower =
-            key.toLowerCase();
-
-
-        if (
-            lower.includes("date") ||
-            lower === "day" ||
-            lower.includes("timestamp")
-        ) {
-
-            const date =
-                parseDate(row[key]);
-
-
-            if (date) return date;
-
-        }
-
+    if (!canvas) {
+        return;
     }
 
 
-    /*
-       Otherwise inspect values.
-    */
-
-    for (const key of keys) {
-
-        const date =
-            parseDate(row[key]);
-
-
-        if (date) return date;
-
-    }
-
-
-    return null;
-
-}
-
-
-/* =========================================================
-   DATE PARSER
-========================================================= */
-
-function parseDate(value) {
-
-    if (
-        value === null ||
-        value === undefined ||
-        value === ""
-    ) {
-        return null;
-    }
-
-
-    if (value instanceof Date) {
-
-        if (!isNaN(value.getTime())) {
-            return value;
-        }
-
-        return null;
-    }
-
-
-    /*
-       Excel serial date.
-    */
-
-    if (
-        typeof value === "number" &&
-        value > 20000 &&
-        value < 80000
-    ) {
-
-        const date =
-            XLSX.SSF.parse_date_code(
-                value
-            );
-
-
-        if (!date) return null;
-
-
-        return new Date(
-            date.y,
-            date.m - 1,
-            date.d,
-            date.H || 0,
-            date.M || 0,
-            date.S || 0
-        );
-
-    }
-
-
-    if (typeof value !== "string")
-        return null;
-
-
-    const text =
-        value.trim();
-
-
-    if (!text) return null;
-
-
-    /*
-       DD/MM/YYYY
-       DD-MM-YYYY
-    */
-
-    const indian =
-        text.match(
-            /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/
+    const chartKey =
+        Object.keys(charts).find(
+            key =>
+                canvasId.toLowerCase()
+                    .includes(
+                        key.toLowerCase()
+                    )
         );
 
 
-    if (indian) {
-
-        const day =
-            Number(indian[1]);
-
-        const month =
-            Number(indian[2]) - 1;
-
-        const year =
-            Number(indian[3]);
+    const labels =
+        dates.map(
+            date => date
+        );
 
 
-        const date =
-            new Date(
-                year,
-                month,
-                day
-            );
+    const config = {
+
+        type: "line",
+
+        data: {
+
+            labels,
+
+            datasets: [
+
+                {
+                    label,
+
+                    data: values,
+
+                    tension: 0.25,
+
+                    pointRadius: 3,
+
+                    pointHoverRadius: 5,
+
+                    borderWidth: 2,
+
+                    fill: false
+                }
+
+            ]
+
+        },
+
+        options: {
+
+            responsive: true,
+
+            maintainAspectRatio: false,
+
+            animation: false,
+
+            interaction: {
+
+                mode: "nearest",
+
+                intersect: false
+
+            },
+
+            plugins: {
+
+                legend: {
+                    display: false
+                },
+
+                tooltip: {
+
+                    callbacks: {
+
+                        title: function(items) {
+
+                            if (
+                                !items ||
+                                !items.length
+                            ) {
+                                return "";
+                            }
 
 
-        if (
-            date.getFullYear() === year &&
-            date.getMonth() === month &&
-            date.getDate() === day
-        ) {
+                            const value =
+                                items[0].label;
 
-            return date;
+
+                            if (
+                                value instanceof Date
+                            ) {
+
+                                return showTime
+                                    ? formatDateTime(value)
+                                    : formatDate(value);
+
+                            }
+
+
+                            return value;
+
+                        },
+
+                        label: function(context) {
+
+                            const value =
+                                context.raw;
+
+
+                            if (
+                                percentage &&
+                                value !== null &&
+                                value !== undefined
+                            ) {
+
+                                return `${value.toFixed(2)}%`;
+
+                            }
+
+
+                            return `${value}`;
+
+                        }
+
+                    }
+
+                }
+
+            },
+
+            scales: {
+
+                x: {
+
+                    type: "category",
+
+                    /*
+                       The labels themselves are dates,
+                       but category labels prevent Chart.js
+                       from doing strange numerical date
+                       interpolation.
+                    */
+
+                    ticks: {
+
+                        autoSkip: true,
+
+                        maxTicksLimit:
+                            calculateMaxTicks(
+                                dates.length
+                            ),
+
+                        callback: function(
+                            value,
+                            index
+                        ) {
+
+                            const date =
+                                dates[index];
+
+
+                            if (
+                                !(date instanceof Date)
+                            ) {
+                                return date;
+                            }
+
+
+                            if (showTime) {
+
+                                return formatDateTime(
+                                    date
+                                );
+
+                            }
+
+
+                            return formatDate(
+                                date
+                            );
+
+                        }
+
+                    }
+
+                },
+
+                y: {
+
+                    beginAtZero: false,
+
+                    ticks: {
+
+                        callback: function(value) {
+
+                            if (percentage) {
+                                return `${value}%`;
+                            }
+
+                            return value;
+
+                        }
+
+                    }
+
+                }
+
+            }
 
         }
 
-    }
+    };
 
 
-    /*
-       ISO / normal JS date.
-    */
-
-    const parsed =
-        new Date(text);
-
-
-    if (
-        !isNaN(
-            parsed.getTime()
-        )
-    ) {
-
-        return parsed;
-
-    }
-
-
-    return null;
+    charts[chartKey || canvasId] =
+        new Chart(
+            canvas,
+            config
+        );
 
 }
 
 
 /* =========================================================
-   FIND DATE BY COLUMN KEYWORDS
+   SCATTER CHART
 ========================================================= */
 
-function findDateByKeywords(
-    row,
-    keywords
+function createScatterChart(
+    canvasId,
+    label,
+    dates,
+    values,
+    percentage = false
 ) {
 
-    if (!row) return null;
+    const canvas = $(canvasId);
 
-
-    const keys =
-        Object.keys(row);
-
-
-    for (const key of keys) {
-
-        const lower =
-            key.toLowerCase();
-
-
-        const match =
-            keywords.some(
-                keyword =>
-                    lower.includes(
-                        keyword.toLowerCase()
-                    )
-            );
-
-
-        if (match) {
-
-            const date =
-                parseDate(
-                    row[key]
-                );
-
-
-            if (date) return date;
-
-        }
-
+    if (!canvas) {
+        return;
     }
 
 
-    return null;
-
-}
+    const points = [];
 
 
-/* =========================================================
-   FIND STRING
-========================================================= */
-
-function findStringByKeywords(
-    row,
-    keywords
-) {
-
-    if (!row) return null;
-
-
-    const keys =
-        Object.keys(row);
-
-
-    for (const key of keys) {
-
-        const lower =
-            key.toLowerCase();
-
-
-        const match =
-            keywords.some(
-                keyword =>
-                    lower.includes(
-                        keyword.toLowerCase()
-                    )
-            );
-
-
-        if (
-            match &&
-            typeof row[key] === "string"
-        ) {
+    dates.forEach(
+        (date, index) => {
 
             const value =
-                row[key].trim();
-
-
-            if (value)
-                return value;
-
-        }
-
-    }
-
-
-    return null;
-
-}
-
-
-/* =========================================================
-   FIND NUMERIC
-========================================================= */
-
-function findNumericByKeywords(
-    row,
-    keywords
-) {
-
-    if (!row) return null;
-
-
-    const keys =
-        Object.keys(row);
-
-
-    for (const key of keys) {
-
-        const lower =
-            key.toLowerCase();
-
-
-        const match =
-            keywords.some(
-                keyword =>
-                    lower.includes(
-                        keyword.toLowerCase()
-                    )
-            );
-
-
-        if (match) {
-
-            const value =
-                parseNumber(
-                    row[key]
-                );
+                values[index];
 
 
             if (
+                date instanceof Date &&
+                value !== null &&
+                value !== undefined &&
                 Number.isFinite(value)
             ) {
 
-                return value;
+                points.push({
+                    x: date,
+                    y: value
+                });
+
+            }
+
+        }
+    );
+
+
+    const key =
+        Object.keys(charts).find(
+            item =>
+                canvasId.toLowerCase()
+                    .includes(
+                        item.toLowerCase()
+                    )
+        );
+
+
+    charts[key || canvasId] =
+        new Chart(
+            canvas,
+            {
+
+                type: "scatter",
+
+                data: {
+
+                    datasets: [
+
+                        {
+                            label,
+
+                            data: points,
+
+                            showLine: true,
+
+                            tension: 0.25,
+
+                            pointRadius: 3,
+
+                            pointHoverRadius: 5,
+
+                            borderWidth: 2
+                        }
+
+                    ]
+
+                },
+
+                options: {
+
+                    responsive: true,
+
+                    maintainAspectRatio: false,
+
+                    animation: false,
+
+                    interaction: {
+
+                        mode: "nearest",
+
+                        intersect: false
+
+                    },
+
+                    plugins: {
+
+                        legend: {
+                            display: false
+                        },
+
+                        tooltip: {
+
+                            callbacks: {
+
+                                title: function(items) {
+
+                                    if (
+                                        !items.length
+                                    ) {
+                                        return "";
+                                    }
+
+
+                                    const raw =
+                                        items[0].raw;
+
+
+                                    return formatDate(
+                                        new Date(raw.x)
+                                    );
+
+                                },
+
+                                label: function(context) {
+
+                                    const value =
+                                        context.parsed.y;
+
+
+                                    if (percentage) {
+
+                                        return `${value.toFixed(2)}%`;
+
+                                    }
+
+
+                                    return value;
+
+                                }
+
+                            }
+
+                        }
+
+                    },
+
+                    scales: {
+
+                        x: {
+
+                            type: "linear",
+
+                            /*
+                               IMPORTANT:
+                               Dates are stored internally as
+                               timestamps. We explicitly control
+                               the displayed date intervals.
+                            */
+
+                            ticks: {
+
+                                autoSkip: true,
+
+                                maxTicksLimit:
+                                    calculateMaxTicks(
+                                        dates.length
+                                    ),
+
+                                callback: function(value) {
+
+                                    const date =
+                                        new Date(value);
+
+
+                                    return formatDate(
+                                        date
+                                    );
+
+                                }
+
+                            }
+
+                        },
+
+                        y: {
+
+                            ticks: {
+
+                                callback: function(value) {
+
+                                    if (percentage) {
+                                        return `${value}%`;
+                                    }
+
+                                    return value;
+
+                                }
+
+                            }
+
+                        }
+
+                    }
+
+                }
+
+            }
+        );
+
+}
+
+
+/* =========================================================
+   DATE AXIS TICK CALCULATION
+========================================================= */
+
+function calculateMaxTicks(dataLength) {
+
+    /*
+       The important part for your July problem.
+
+       We do NOT let Chart.js generate random repeated
+       date labels.
+
+       Instead:
+
+       1-7 days    -> every 1 day
+       8-15 days   -> every 2 days
+       16-31 days  -> every 2-3 days
+       32-60 days  -> approximately every 7 days
+       etc.
+
+       This prevents:
+       29, 31, 31, 29
+       type behaviour.
+    */
+
+    if (dataLength <= 7) {
+        return dataLength;
+    }
+
+    if (dataLength <= 15) {
+        return 8;
+    }
+
+    if (dataLength <= 31) {
+        return 10;
+    }
+
+    if (dataLength <= 60) {
+        return 9;
+    }
+
+    if (dataLength <= 120) {
+        return 10;
+    }
+
+    return 12;
+
+}
+
+
+/* =========================================================
+   FIND DATE COLUMN
+========================================================= */
+
+function findDateColumn(rows) {
+
+    if (!rows || !rows.length) {
+        return -1;
+    }
+
+
+    /*
+       First try headers.
+    */
+
+    for (
+        let r = 0;
+        r < Math.min(rows.length, 10);
+        r++
+    ) {
+
+        const row = rows[r] || [];
+
+
+        for (
+            let c = 0;
+            c < row.length;
+            c++
+        ) {
+
+            const text =
+                String(row[c] ?? "")
+                    .trim()
+                    .toLowerCase();
+
+
+            if (
+                text === "date" ||
+                text.includes("date") ||
+                text.includes("day")
+            ) {
+
+                return c;
 
             }
 
@@ -2167,42 +2128,284 @@ function findNumericByKeywords(
     }
 
 
-    return null;
+    /*
+       If there is no obvious header,
+       inspect the first few columns for
+       Excel dates.
+    */
+
+    const maxColumns =
+        Math.min(
+            15,
+            Math.max(
+                ...rows.map(
+                    row =>
+                        row
+                            ? row.length
+                            : 0
+                )
+            )
+        );
+
+
+    for (
+        let c = 0;
+        c < maxColumns;
+        c++
+    ) {
+
+        let validDates = 0;
+
+
+        for (
+            let r = 0;
+            r < Math.min(rows.length, 20);
+            r++
+        ) {
+
+            if (
+                parseExcelDate(
+                    rows[r]?.[c]
+                ) !== null
+            ) {
+
+                validDates++;
+
+            }
+
+        }
+
+
+        if (validDates >= 3) {
+            return c;
+        }
+
+    }
+
+
+    return -1;
 
 }
 
 
 /* =========================================================
-   FIND LATEST VALUE
+   FIND COLUMN BY KEYWORDS
 ========================================================= */
 
-function findLatestValue(
+function findColumnByKeywords(
     rows,
     keywords
 ) {
 
-    if (!rows.length)
-        return null;
+    if (!rows || !rows.length) {
+        return -1;
+    }
 
 
     for (
-        let i = rows.length - 1;
-        i >= 0;
-        i--
+        let r = 0;
+        r < Math.min(rows.length, 10);
+        r++
     ) {
 
-        const value =
-            findNumericByKeywords(
-                rows[i],
-                keywords
+        const row = rows[r] || [];
+
+
+        for (
+            let c = 0;
+            c < row.length;
+            c++
+        ) {
+
+            const text =
+                String(row[c] ?? "")
+                    .trim()
+                    .toLowerCase();
+
+
+            if (
+                keywords.some(
+                    keyword =>
+                        text.includes(
+                            keyword.toLowerCase()
+                        )
+                )
+            ) {
+
+                return c;
+
+            }
+
+        }
+
+    }
+
+
+    return -1;
+
+}
+
+
+/* =========================================================
+   EXCEL DATE PARSER
+========================================================= */
+
+function parseExcelDate(value) {
+
+    if (
+        value === null ||
+        value === undefined ||
+        value === ""
+    ) {
+
+        return null;
+
+    }
+
+
+    /*
+       Already a JavaScript Date
+    */
+
+    if (
+        Object.prototype.toString.call(value) ===
+        "[object Date]"
+    ) {
+
+        if (
+            Number.isNaN(
+                value.getTime()
+            )
+        ) {
+
+            return null;
+
+        }
+
+        return value;
+
+    }
+
+
+    /*
+       Excel serial date
+    */
+
+    if (
+        typeof value === "number" &&
+        Number.isFinite(value)
+    ) {
+
+        /*
+           Excel dates are generally > 1.
+           Ignore implausible values.
+        */
+
+        if (
+            value > 1 &&
+            value < 100000
+        ) {
+
+            const parsed =
+                XLSX.SSF.parse_date_code(
+                    value
+                );
+
+
+            if (parsed) {
+
+                return new Date(
+                    parsed.y,
+                    parsed.m - 1,
+                    parsed.d,
+                    parsed.H || 0,
+                    parsed.M || 0,
+                    parsed.S || 0
+                );
+
+            }
+
+        }
+
+        return null;
+
+    }
+
+
+    /*
+       String date
+    */
+
+    if (typeof value === "string") {
+
+        const trimmed =
+            value.trim();
+
+
+        if (!trimmed) {
+            return null;
+        }
+
+
+        /*
+           DD/MM/YYYY
+           DD-MM-YYYY
+        */
+
+        const match =
+            trimmed.match(
+                /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/
             );
 
 
+        if (match) {
+
+            const day =
+                Number(match[1]);
+
+            const month =
+                Number(match[2]) - 1;
+
+            const year =
+                Number(match[3]);
+
+
+            const date =
+                new Date(
+                    year,
+                    month,
+                    day
+                );
+
+
+            if (
+                date.getFullYear() === year &&
+                date.getMonth() === month &&
+                date.getDate() === day
+            ) {
+
+                return date;
+
+            }
+
+        }
+
+
+        /*
+           Let JavaScript handle ISO-like dates.
+        */
+
+        const parsed =
+            new Date(trimmed);
+
+
         if (
-            Number.isFinite(value)
+            !Number.isNaN(
+                parsed.getTime()
+            )
         ) {
 
-            return value;
+            return parsed;
 
         }
 
@@ -2225,145 +2428,116 @@ function parseNumber(value) {
         value === undefined ||
         value === ""
     ) {
-        return NaN;
-    }
 
-
-    if (typeof value === "number")
-        return value;
-
-
-    if (typeof value === "string") {
-
-        let text =
-            value
-                .replace(/,/g, "")
-                .replace(/%/g, "")
-                .trim();
-
-
-        if (!text)
-            return NaN;
-
-
-        const number =
-            Number(text);
-
-
-        return Number.isFinite(number)
-            ? number
-            : NaN;
+        return null;
 
     }
 
 
-    return NaN;
+    if (typeof value === "number") {
+
+        return Number.isFinite(value)
+            ? value
+            : null;
+
+    }
+
+
+    let text =
+        String(value)
+            .trim()
+            .replace(/,/g, "")
+            .replace(/%/g, "");
+
+
+    if (!text) {
+        return null;
+    }
+
+
+    const number =
+        Number(text);
+
+
+    return Number.isFinite(number)
+        ? number
+        : null;
 
 }
 
 
 /* =========================================================
-   PERCENTAGE FORMAT
+   FORMATTING
 ========================================================= */
+
+function formatNumber(value) {
+
+    if (
+        value === null ||
+        value === undefined ||
+        !Number.isFinite(value)
+    ) {
+
+        return "—";
+
+    }
+
+
+    return value.toLocaleString(
+        "en-IN",
+        {
+            maximumFractionDigits: 2
+        }
+    );
+
+}
+
 
 function formatPercent(value) {
 
-    const number =
-        parseNumber(value);
+    if (
+        value === null ||
+        value === undefined ||
+        !Number.isFinite(value)
+    ) {
 
-
-    if (!Number.isFinite(number))
         return "—";
 
-
-    /*
-       If Excel stores 0.842,
-       display 84.2%.
-
-       If Excel stores 84.2,
-       display 84.2%.
-    */
-
-    const percentage =
-        Math.abs(number) <= 1
-            ? number * 100
-            : number;
+    }
 
 
-    return `${percentage.toFixed(1)}%`;
+    return `${value.toFixed(2)}%`;
 
 }
 
 
-/* =========================================================
-   NUMBER FORMAT
-========================================================= */
+function formatDate(date) {
 
-function formatNumber(
-    value,
-    decimals = 2
-) {
-
-    const number =
-        parseNumber(value);
-
-
-    if (!Number.isFinite(number))
-        return "—";
-
-
-    return number.toLocaleString(
-        "en-IN",
-        {
-            minimumFractionDigits:
-                decimals,
-
-            maximumFractionDigits:
-                decimals
-        }
-    );
-
-}
-
-
-/* =========================================================
-   DATE FORMATTING
-========================================================= */
-
-function formatFullDate(date) {
-
-    if (!(date instanceof Date))
-        date = new Date(date);
-
-
-    if (isNaN(date.getTime()))
-        return "";
+    if (!(date instanceof Date)) {
+        return String(date ?? "");
+    }
 
 
     return date.toLocaleDateString(
-        "en-IN",
+        "en-GB",
         {
             day: "2-digit",
-            month: "short",
-            year: "numeric"
+            month: "short"
         }
     );
 
 }
 
 
-function formatFullDateTime(date) {
+function formatDateTime(date) {
 
-    if (!(date instanceof Date))
-        date = new Date(date);
-
-
-    if (isNaN(date.getTime()))
-        return "";
+    if (!(date instanceof Date)) {
+        return String(date ?? "");
+    }
 
 
     return date.toLocaleString(
-        "en-IN",
+        "en-GB",
         {
             day: "2-digit",
             month: "short",
@@ -2376,21 +2550,71 @@ function formatFullDateTime(date) {
 }
 
 
-function formatShortDateTime(date) {
+/* =========================================================
+   SHOW / HIDE ANALYTICS
+========================================================= */
 
-    if (!(date instanceof Date))
-        date = new Date(date);
+function hideAnalyticsSections() {
+
+    /*
+       Do NOT hide the upload panel.
+
+       These are the actual analytics sections.
+    */
+
+    [
+        "dashboardSection",
+        "paSection",
+        "performanceSection",
+        "curtailmentSection",
+        "energySection"
+    ].forEach(hide);
+
+}
 
 
-    if (isNaN(date.getTime()))
-        return "";
+function showAnalyticsSections() {
+
+    [
+        "dashboardSection",
+        "paSection",
+        "performanceSection",
+        "curtailmentSection",
+        "energySection"
+    ].forEach(show);
+
+}
 
 
-    return date.toLocaleDateString(
-        "en-IN",
-        {
-            day: "2-digit",
-            month: "short"
+/* =========================================================
+   DESTROY CHARTS
+========================================================= */
+
+function destroyCharts() {
+
+    Object.keys(charts).forEach(
+        key => {
+
+            if (
+                charts[key] &&
+                typeof charts[key].destroy ===
+                "function"
+            ) {
+
+                try {
+                    charts[key].destroy();
+                } catch (error) {
+                    console.warn(
+                        `Could not destroy ${key}`,
+                        error
+                    );
+                }
+
+            }
+
+
+            charts[key] = null;
+
         }
     );
 
@@ -2398,201 +2622,61 @@ function formatShortDateTime(date) {
 
 
 /* =========================================================
-   DURATION
+   RESET DASHBOARD
 ========================================================= */
 
-function formatDuration(
-    milliseconds
-) {
+function resetDashboard() {
 
-    const minutes =
-        Math.round(
-            milliseconds / 60000
-        );
-
-
-    const hours =
-        Math.floor(
-            minutes / 60
-        );
-
-
-    const remaining =
-        minutes % 60;
-
-
-    if (hours === 0)
-        return `${remaining} min`;
-
-
-    return `${hours}h ${remaining}m`;
-
-}
-
-
-/* =========================================================
-   SET TEXT
-========================================================= */
-
-function setText(
-    id,
-    value
-) {
-
-    const element =
-        document.getElementById(id);
-
-
-    if (element) {
-        element.textContent = value;
-    }
-
-}
-
-
-/* =========================================================
-   DESTROY CHART
-========================================================= */
-
-function destroyChart(id) {
-
-    if (charts[id]) {
-
-        charts[id].destroy();
-
-        delete charts[id];
-
-    }
-
-}
-
-
-/* =========================================================
-   CLEAR CANVAS MESSAGE
-========================================================= */
-
-function clearCanvasMessage(
-    canvas,
-    message
-) {
-
-    const context =
-        canvas.getContext("2d");
-
-
-    if (!context) return;
-
-
-    context.clearRect(
-        0,
-        0,
-        canvas.width,
-        canvas.height
-    );
-
-
-    context.save();
-
-
-    context.textAlign = "center";
-
-    context.textBaseline = "middle";
-
-
-    context.font =
-        "12px Inter, Arial, sans-serif";
-
-
-    context.fillStyle =
-        "#829095";
-
-
-    context.fillText(
-        message,
-        canvas.width / 2,
-        canvas.height / 2
-    );
-
-
-    context.restore();
-
-}
-
-
-/* =========================================================
-   RESET APPLICATION
-========================================================= */
-
-function resetApplication() {
+    destroyCharts();
 
     workbook = null;
-
-    uploadedFile = null;
-
-    dashboardData = [];
-    dailyKPIData = [];
-    paData = [];
-    curtailmentData = [];
-    annualKPIData = [];
+    currentFile = null;
 
 
-    Object.keys(charts).forEach(
-        id => destroyChart(id)
+    if (dgrFile) {
+        dgrFile.value = "";
+    }
+
+
+    /*
+       Reset file UI
+    */
+
+    hide("fileInfo");
+    hide("workbookStatus");
+    show("emptyState");
+
+
+    /*
+       Reset analytics
+    */
+
+    hideAnalyticsSections();
+
+
+    /*
+       Reset texts
+    */
+
+    setText(
+        "fileName",
+        "—"
     );
 
+    setText(
+        "fileSheets",
+        "—"
+    );
 
-    const fileInput =
-        document.getElementById("dgrFile");
+    setText(
+        "sidebarFileName",
+        "No DGR uploaded"
+    );
 
-
-    if (fileInput) {
-        fileInput.value = "";
-    }
-
-
-    const fileInfo =
-        document.getElementById("fileInfo");
-
-
-    if (fileInfo) {
-        fileInfo.classList.add("hidden");
-    }
-
-
-    const workbookStatus =
-        document.getElementById(
-            "workbookStatus"
-        );
-
-
-    if (workbookStatus) {
-        workbookStatus.classList.add("hidden");
-    }
-
-
-    const emptyState =
-        document.getElementById(
-            "emptyState"
-        );
-
-
-    if (emptyState) {
-        emptyState.classList.remove("hidden");
-    }
-
-
-    const sidebarFileName =
-        document.getElementById(
-            "sidebarFileName"
-        );
-
-
-    if (sidebarFileName) {
-
-        sidebarFileName.textContent =
-            "No DGR uploaded";
-
-    }
+    setText(
+        "statusText",
+        "Upload a DGR to generate the analytics."
+    );
 
 
     setText(
@@ -2615,6 +2699,7 @@ function resetApplication() {
         "—"
     );
 
+
     setText(
         "totalBudget",
         "—"
@@ -2631,35 +2716,44 @@ function resetApplication() {
     );
 
 
-    hideDashboardUntilUpload();
-
-
-    setStatus(
-        "Upload a DGR to generate the analytics."
+    setText(
+        "curtailmentSummary",
+        "Waiting for DGR data"
     );
+
+
+    if (sheetBadges) {
+        sheetBadges.innerHTML = "";
+    }
 
 }
 
 
 /* =========================================================
-   EXTRA SAFETY:
-   PREVENT MULTIPLE UPLOAD LABELS FROM BEING GENERATED
+   GLOBAL ERROR HANDLING
 ========================================================= */
 
-/*
-   app.js does NOT create any "Upload DGR" buttons.
+window.addEventListener(
+    "error",
+    (event) => {
 
-   The only upload controls are the two already present
-   in HTML:
+        console.error(
+            "Application error:",
+            event.error || event.message
+        );
 
-   1. Header → Upload DGR
-   2. Empty state → Upload DGR
-
-   The large drag-and-drop area is clickable but does
-   not create another button.
-*/
+    }
+);
 
 
-/* =========================================================
-   END
-========================================================= */
+window.addEventListener(
+    "unhandledrejection",
+    (event) => {
+
+        console.error(
+            "Unhandled promise rejection:",
+            event.reason
+        );
+
+    }
+);
