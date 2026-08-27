@@ -1,6 +1,7 @@
 /* =========================================================
    SOLAR DGR ANALYTICS
    app.js
+   Robust DGR workbook parser + Chart.js dashboard
 ========================================================= */
 
 "use strict";
@@ -11,1556 +12,846 @@
 
 let workbook = null;
 
-let charts = {
-    dashboardPR: null,
-    dashboardLoss: null,
-    pa: null,
-    pr: null,
-    hours: null,
-    loss: null,
-    curtailment: null,
-    energy: null
+let dailyRows = [];
+let paRows = [];
+let curtailmentRows = [];
+let annualRows = [];
+
+const charts = {};
+
+
+/* =========================================================
+   DOM HELPER
+========================================================= */
+
+const $ = id => document.getElementById(id);
+
+
+/* =========================================================
+   FIELD DEFINITIONS
+========================================================= */
+
+const DAILY_FIELDS = {
+    date: "Date",
+    pa: "PA(%)",
+    pr: "PR(%)",
+    hours: "Operating Hours",
+    loss: "System_Losses (%)",
+    measured: "Inv_Exp (kWh)",
+    netExport: "220kV_Net_Exp (KWh)",
+    capacity: "Firm DC Capacity (MWp)"
 };
 
-let currentFile = null;
+const CURTAILMENT_FIELDS = {
+    date: "Date",
+    from: "From",
+    to: "To",
+    duration: "Duration in MIN",
+    lossGeneration: "Loss of Generation MWh",
+    capacityLoss: "Loss of Capacity in MWH",
+    remark: "Remark",
+    setPoint: "Set Point (AC MW)"
+};
+
+const PA_FIELDS = {
+    date: "Date",
+    start: "Breakdown Time",
+    acknowledgement: "Acknowledgement Time",
+    workStart: "Work Start time on Fault",
+    completion: "Work Completion time on fault",
+    duration: "Breakdown Time",
+    equipment: "Affected Equipment",
+    category: "Fault Category",
+    description: "Breakdown Description",
+    energyLoss: "Approximate Energy Loss (KWh)"
+};
 
 
 /* =========================================================
-   DOM HELPERS
+   NUMBER HELPERS
 ========================================================= */
 
-const $ = (id) => document.getElementById(id);
+function cleanNumber(value) {
 
-function setText(id, value) {
-    const el = $(id);
-
-    if (el) {
-        el.textContent = value;
+    if (
+        value === null ||
+        value === undefined ||
+        value === ""
+    ) {
+        return NaN;
     }
+
+    if (typeof value === "number") {
+        return Number.isFinite(value) ? value : NaN;
+    }
+
+    let text = String(value)
+        .replace(/,/g, "")
+        .replace(/%/g, "")
+        .trim();
+
+    if (!text) return NaN;
+
+    const n = Number(text);
+
+    return Number.isFinite(n) ? n : NaN;
 }
 
-function show(id) {
-    const el = $(id);
 
-    if (el) {
-        el.classList.remove("hidden");
+/* =========================================================
+   DATE HELPERS
+========================================================= */
+
+function toDate(value) {
+
+    if (value instanceof Date && !isNaN(value)) {
+        return new Date(
+            value.getFullYear(),
+            value.getMonth(),
+            value.getDate()
+        );
     }
-}
 
-function hide(id) {
-    const el = $(id);
+    if (typeof value === "number") {
 
-    if (el) {
-        el.classList.add("hidden");
-    }
-}
+        try {
 
+            const parsed =
+                XLSX.SSF.parse_date_code(value);
 
-/* =========================================================
-   DOM ELEMENTS
-========================================================= */
+            if (parsed) {
 
-const dgrFile = $("dgrFile");
-const dropZone = $("dropZone");
-const fileInfo = $("fileInfo");
-const workbookStatus = $("workbookStatus");
-const sheetBadges = $("sheetBadges");
-const removeFile = $("removeFile");
-const emptyState = $("emptyState");
-const statusText = $("statusText");
-const sidebarFileName = $("sidebarFileName");
-
-
-/* =========================================================
-   INITIALISE
-========================================================= */
-
-document.addEventListener("DOMContentLoaded", () => {
-
-    initialiseNavigation();
-    initialiseUpload();
-
-    /*
-       Hide analytics sections until a DGR is uploaded.
-       The upload area itself remains visible.
-    */
-
-    hideAnalyticsSections();
-
-});
-
-
-/* =========================================================
-   NAVIGATION
-========================================================= */
-
-function initialiseNavigation() {
-
-    const navItems = document.querySelectorAll(".nav-item");
-
-    navItems.forEach((button) => {
-
-        button.addEventListener("click", () => {
-
-            const targetId = button.dataset.target;
-            const target = $(targetId);
-
-            if (!target) {
-                return;
+                return new Date(
+                    parsed.y,
+                    parsed.m - 1,
+                    parsed.d
+                );
             }
 
-            navItems.forEach((item) => {
-                item.classList.remove("active");
-            });
+        } catch (error) {
 
-            button.classList.add("active");
+            console.warn(
+                "Excel date conversion failed:",
+                value
+            );
+        }
+    }
 
-            target.scrollIntoView({
-                behavior: "smooth",
-                block: "start"
-            });
+    if (typeof value === "string") {
 
-        });
+        const trimmed = value.trim();
 
-    });
+        if (!trimmed) return null;
 
+        const parsed = new Date(trimmed);
+
+        if (!isNaN(parsed)) {
+
+            return new Date(
+                parsed.getFullYear(),
+                parsed.getMonth(),
+                parsed.getDate()
+            );
+        }
+    }
+
+    return null;
+}
+
+
+function isoDate(date) {
+
+    if (!(date instanceof Date) || isNaN(date)) {
+        return "";
+    }
+
+    const y = date.getFullYear();
+
+    const m = String(
+        date.getMonth() + 1
+    ).padStart(2, "0");
+
+    const d = String(
+        date.getDate()
+    ).padStart(2, "0");
+
+    return `${y}-${m}-${d}`;
+}
+
+
+function shortDate(date) {
+
+    if (!(date instanceof Date)) {
+        return "";
+    }
+
+    return date.toLocaleDateString(
+        "en-IN",
+        {
+            day: "2-digit",
+            month: "short"
+        }
+    );
+}
+
+
+function dayNumber(date) {
+
+    return date instanceof Date
+        ? date.getDate()
+        : "";
+}
+
+
+function fullDate(date) {
+
+    if (!(date instanceof Date)) {
+        return "";
+    }
+
+    return date.toLocaleDateString(
+        "en-IN",
+        {
+            day: "2-digit",
+            month: "short",
+            year: "numeric"
+        }
+    );
 }
 
 
 /* =========================================================
-   UPLOAD INITIALISATION
+   TIME HELPERS
 ========================================================= */
 
-function initialiseUpload() {
+function timeToMinutes(value) {
 
-    if (!dgrFile) {
-        console.error("DGR file input not found.");
-        return;
+    if (value === null || value === undefined) {
+        return NaN;
     }
 
-    /*
-       Normal file selection
-    */
+    if (value instanceof Date) {
 
-    dgrFile.addEventListener("change", async (event) => {
+        return (
+            value.getHours() * 60 +
+            value.getMinutes()
+        );
+    }
 
-        const files = event.target.files;
+    const text = String(value).trim();
 
-        if (!files || !files.length) {
-            return;
-        }
+    const match = text.match(
+        /^(\d{1,2}):(\d{2})/
+    );
 
-        await processDGRFile(files[0]);
+    if (!match) return NaN;
 
-    });
-
-
-    /*
-       Drag over
-    */
-
-    if (dropZone) {
-
-        dropZone.addEventListener("dragover", (event) => {
-
-            event.preventDefault();
-
-            dropZone.classList.add("dragging");
-
-        });
+    return (
+        Number(match[1]) * 60 +
+        Number(match[2])
+    );
+}
 
 
-        /*
-           Drag leave
-        */
+function formatTime(value) {
 
-        dropZone.addEventListener("dragleave", () => {
+    if (
+        value === null ||
+        value === undefined ||
+        value === ""
+    ) {
+        return "—";
+    }
 
-            dropZone.classList.remove("dragging");
+    if (value instanceof Date) {
 
-        });
-
-
-        /*
-           Drop
-        */
-
-        dropZone.addEventListener("drop", async (event) => {
-
-            event.preventDefault();
-
-            dropZone.classList.remove("dragging");
-
-            const files = event.dataTransfer.files;
-
-            if (!files || !files.length) {
-                return;
+        return value.toLocaleTimeString(
+            "en-IN",
+            {
+                hour: "2-digit",
+                minute: "2-digit",
+                hour12: false
             }
-
-            await processDGRFile(files[0]);
-
-        });
-
-
-        /*
-           Clicking the upload panel opens file picker
-        */
-
-        dropZone.addEventListener("click", () => {
-
-            dgrFile.click();
-
-        });
-
+        );
     }
 
+    const text = String(value);
+
+    const match = text.match(
+        /^(\d{1,2}):(\d{2})/
+    );
+
+    if (!match) return text;
+
+    return `${String(match[1]).padStart(2, "0")}:${match[2]}`;
+}
+
+
+/* =========================================================
+   DISPLAY HELPERS
+========================================================= */
+
+function formatNumber(value, decimals = 2) {
+
+    if (!Number.isFinite(value)) {
+        return "—";
+    }
+
+    return value.toLocaleString(
+        "en-IN",
+        {
+            minimumFractionDigits: decimals,
+            maximumFractionDigits: decimals
+        }
+    );
+}
+
+
+function formatPercent(value) {
+
+    if (!Number.isFinite(value)) {
+        return "—";
+    }
 
     /*
-       Remove uploaded file
+       DGR stores PA / PR / System Loss as decimals.
+
+       Example:
+       0.786237 = 78.62%
+       0.019305 = 1.93%
     */
 
-    if (removeFile) {
+    let percentage = value;
 
-        removeFile.addEventListener("click", () => {
-
-            resetDashboard();
-
-        });
-
+    if (Math.abs(value) <= 1.5) {
+        percentage = value * 100;
     }
 
+    return `${percentage.toFixed(2)}%`;
 }
 
 
 /* =========================================================
-   PROCESS DGR FILE
+   ARRAY / SHEET HELPERS
 ========================================================= */
 
-async function processDGRFile(file) {
-
-    if (!file) {
-        return;
-    }
-
-    const extension = file.name
-        .split(".")
-        .pop()
-        .toLowerCase();
-
-    const allowed = ["xlsx", "xls", "csv"];
-
-    if (!allowed.includes(extension)) {
-
-        alert(
-            "Please upload a valid Excel or CSV DGR file.\n\n" +
-            "Supported formats: .xlsx, .xls, .csv"
-        );
-
-        return;
-    }
-
-
-    try {
-
-        currentFile = file;
-
-        setText(
-            "statusText",
-            "Reading DGR workbook..."
-        );
-
-
-        /*
-           Read file as ArrayBuffer
-        */
-
-        const arrayBuffer = await file.arrayBuffer();
-
-
-        /*
-           XLSX is provided by SheetJS in HTML.
-        */
-
-        if (typeof XLSX === "undefined") {
-
-            throw new Error(
-                "SheetJS library was not loaded. " +
-                "Please check the XLSX script in your HTML."
-            );
-
-        }
-
-
-        /*
-           Read workbook
-        */
-
-        workbook = XLSX.read(arrayBuffer, {
-            type: "array",
-            cellDates: true,
-            cellNF: true,
-            cellText: true
-        });
-
-
-        if (
-            !workbook ||
-            !workbook.SheetNames ||
-            workbook.SheetNames.length === 0
-        ) {
-
-            throw new Error(
-                "No worksheets were found in the uploaded file."
-            );
-
-        }
-
-
-        /*
-           Update file information
-        */
-
-        setText(
-            "fileName",
-            file.name
-        );
-
-        setText(
-            "fileSheets",
-            `${workbook.SheetNames.length} worksheet(s) detected`
-        );
-
-        setText(
-            "sidebarFileName",
-            file.name
-        );
-
-
-        /*
-           Display workbook information
-        */
-
-        renderWorkbookStatus();
-
-
-        /*
-           Hide duplicate upload prompts.
-        */
-
-        hide("emptyState");
-
-
-        /*
-           Show uploaded file information.
-        */
-
-        show("fileInfo");
-        show("workbookStatus");
-
-
-        /*
-           Show analytics
-        */
-
-        showAnalyticsSections();
-
-
-        /*
-           Analyse workbook
-        */
-
-        analyseWorkbook();
-
-
-        setText(
-            "statusText",
-            `DGR loaded successfully · ${file.name}`
-        );
-
-
-    } catch (error) {
-
-        console.error("DGR upload error:", error);
-
-        workbook = null;
-
-        setText(
-            "statusText",
-            "Unable to read the uploaded DGR."
-        );
-
-        alert(
-            "The DGR could not be read.\n\n" +
-            "Please make sure the file is a valid Excel/CSV file."
-        );
-
-    }
-
-}
-
-
-/* =========================================================
-   WORKBOOK STATUS
-========================================================= */
-
-function renderWorkbookStatus() {
-
-    if (!sheetBadges || !workbook) {
-        return;
-    }
-
-    sheetBadges.innerHTML = "";
-
-
-    const requiredSheets = [
-        "Dashboard",
-        "Annual_KPI",
-        "Daily_KPI",
-        "PA",
-        "Curtailment"
-    ];
-
-
-    const actualSheets = workbook.SheetNames.map(
-        normalizeSheetName
-    );
-
-
-    requiredSheets.forEach((required) => {
-
-        const badge = document.createElement("div");
-
-        badge.className = "sheet-badge";
-
-
-        const found = actualSheets.some(
-            sheet =>
-                sheet === normalizeSheetName(required)
-        );
-
-
-        if (found) {
-
-            badge.textContent = `${required} ✓`;
-
-        } else {
-
-            badge.textContent = `${required} — Not found`;
-
-            badge.classList.add("missing");
-
-        }
-
-
-        sheetBadges.appendChild(badge);
-
-    });
-
-}
-
-
-/* =========================================================
-   SHEET NAME NORMALISATION
-========================================================= */
-
-function normalizeSheetName(name) {
-
-    return String(name || "")
-        .trim()
-        .toLowerCase()
-        .replace(/[\s_-]+/g, "");
-
-}
-
-
-/* =========================================================
-   FIND SHEET
-========================================================= */
-
-function getSheet(possibleNames) {
-
-    if (!workbook) {
-        return null;
-    }
-
-
-    const wanted = possibleNames.map(
-        normalizeSheetName
-    );
-
-
-    const actualName = workbook.SheetNames.find(
-        name =>
-            wanted.includes(
-                normalizeSheetName(name)
-            )
-    );
-
-
-    if (!actualName) {
-        return null;
-    }
-
-
-    return workbook.Sheets[actualName];
-
-}
-
-
-/* =========================================================
-   SHEET TO JSON
-========================================================= */
-
-function sheetToRows(sheet) {
-
-    if (!sheet) {
-        return [];
-    }
-
+function sheetToMatrix(sheet) {
 
     return XLSX.utils.sheet_to_json(
         sheet,
         {
             header: 1,
-            defval: null,
             raw: true,
-            blankrows: false
+            defval: null
         }
     );
-
 }
 
 
-/* =========================================================
-   WORKBOOK ANALYSIS
-========================================================= */
+function findHeaderRow(sheet, requiredHeaders) {
 
-function analyseWorkbook() {
-
-    /*
-       Destroy old charts first.
-    */
-
-    destroyCharts();
-
-
-    /*
-       Dashboard
-    */
-
-    analyseDailyKPI();
-
-
-    /*
-       PA
-    */
-
-    analysePA();
-
-
-    /*
-       Curtailment
-    */
-
-    analyseCurtailment();
-
-
-    /*
-       Annual energy
-    */
-
-    analyseAnnualEnergy();
-
-}
-
-
-/* =========================================================
-   DAILY KPI
-========================================================= */
-
-function analyseDailyKPI() {
-
-    const sheet = getSheet([
-        "Daily_KPI",
-        "Daily KPI",
-        "DailyKPI"
-    ]);
-
-
-    if (!sheet) {
-
-        setText("dashboardPR", "—");
-        setText("dashboardLoss", "—");
-        setText("dashboardHours", "—");
-
-        return;
-
-    }
-
-
-    const rows = sheetToRows(sheet);
-
-
-    /*
-       Column indexes:
-       I  = 9  -> index 8
-       V  = 22 -> index 21
-       AD = 30 -> index 29
-
-       Excel is 1-based.
-       JavaScript arrays are 0-based.
-    */
-
-    const dateIndex = findDateColumn(rows);
-
-    const hoursIndex = 8;
-    const prIndex = 21;
-    const lossIndex = 29;
-
-
-    const records = [];
-
-
-    for (let i = 0; i < rows.length; i++) {
-
-        const row = rows[i];
-
-        if (!row) {
-            continue;
-        }
-
-
-        const date = parseExcelDate(
-            dateIndex >= 0 ? row[dateIndex] : null
-        );
-
-
-        const pr = parseNumber(
-            row[prIndex]
-        );
-
-
-        const hours = parseNumber(
-            row[hoursIndex]
-        );
-
-
-        const loss = parseNumber(
-            row[lossIndex]
-        );
-
-
-        /*
-           Ignore completely empty records.
-        */
-
-        if (
-            date === null &&
-            pr === null &&
-            hours === null &&
-            loss === null
-        ) {
-            continue;
-        }
-
-
-        records.push({
-            date,
-            pr,
-            hours,
-            loss
-        });
-
-    }
-
-
-    /*
-       Remove probable header rows / invalid dates
-       when possible.
-    */
-
-    const usableRecords = records.filter(
-        record =>
-            record.date !== null ||
-            record.pr !== null ||
-            record.hours !== null ||
-            record.loss !== null
-    );
-
-
-    if (!usableRecords.length) {
-        return;
-    }
-
-
-    /*
-       Sort chronologically.
-    */
-
-    usableRecords.sort(
-        (a, b) =>
-            (a.date || 0) - (b.date || 0)
-    );
-
-
-    /*
-       Latest available values
-    */
-
-    const latest = [...usableRecords]
-        .reverse()
-        .find(
-            row =>
-                row.pr !== null ||
-                row.hours !== null ||
-                row.loss !== null
-        );
-
-
-    if (latest) {
-
-        setText(
-            "dashboardPR",
-            formatPercent(latest.pr)
-        );
-
-        setText(
-            "dashboardHours",
-            formatNumber(latest.hours)
-        );
-
-        setText(
-            "dashboardLoss",
-            formatPercent(latest.loss)
-        );
-
-    }
-
-
-    /*
-       Create charts
-    */
-
-    createPerformanceCharts(
-        usableRecords
-    );
-
-}
-
-
-/* =========================================================
-   PERFORMANCE CHARTS
-========================================================= */
-
-function createPerformanceCharts(records) {
-
-    const labels = records.map(
-        record => record.date
-    );
-
-
-    /*
-       PR
-    */
-
-    const prData = records.map(
-        record => record.pr
-    );
-
-
-    createScatterChart(
-        "dashboardPRChart",
-        "Performance Ratio",
-        labels,
-        prData,
-        true
-    );
-
-
-    createScatterChart(
-        "prChart",
-        "Performance Ratio",
-        labels,
-        prData,
-        true
-    );
-
-
-    /*
-       Hours
-    */
-
-    const hoursData = records.map(
-        record => record.hours
-    );
-
-
-    createLineChart(
-        "hoursChart",
-        "Operating Hours",
-        labels,
-        hoursData,
-        false
-    );
-
-
-    /*
-       Loss
-    */
-
-    const lossData = records.map(
-        record => record.loss
-    );
-
-
-    createLineChart(
-        "dashboardLossChart",
-        "System Losses",
-        labels,
-        lossData,
-        true
-    );
-
-
-    createLineChart(
-        "lossChart",
-        "System Losses",
-        labels,
-        lossData,
-        true
-    );
-
-}
-
-
-/* =========================================================
-   PA ANALYSIS
-========================================================= */
-
-function analysePA() {
-
-    const sheet = getSheet([
-        "PA",
-        "Plant Availability",
-        "PA Analysis"
-    ]);
-
-
-    if (!sheet) {
-        return;
-    }
-
-
-    const rows = sheetToRows(sheet);
-
-
-    /*
-       Try to identify columns by header names.
-    */
-
-    const headerInfo = detectPAColumns(rows);
-
-
-    const records = [];
-
+    const matrix = sheetToMatrix(sheet);
 
     for (
-        let i = headerInfo.headerRow + 1;
-        i < rows.length;
+        let i = 0;
+        i < Math.min(matrix.length, 30);
         i++
     ) {
 
-        const row = rows[i];
+        const row = matrix[i] || [];
 
-        if (!row) {
-            continue;
-        }
-
-
-        const start = parseExcelDate(
-            row[headerInfo.start]
+        const values = row.map(
+            value =>
+                String(value ?? "")
+                    .trim()
+                    .toLowerCase()
         );
 
-
-        const end = parseExcelDate(
-            row[headerInfo.end]
-        );
-
-
-        const duration =
-            headerInfo.duration >= 0
-                ? parseNumber(
-                    row[headerInfo.duration]
+        const found = requiredHeaders.every(
+            required =>
+                values.includes(
+                    String(required)
+                        .trim()
+                        .toLowerCase()
                 )
-                : null;
+        );
 
-
-        if (!start && !end) {
-            continue;
+        if (found) {
+            return i;
         }
-
-
-        records.push({
-            start,
-            end,
-            duration
-        });
-
     }
 
-
-    if (!records.length) {
-        return;
-    }
-
-
-    createPAChart(records);
-
+    return -1;
 }
 
 
-/* =========================================================
-   DETECT PA COLUMNS
-========================================================= */
+function sheetToObjects(sheet, requiredHeaders = []) {
 
-function detectPAColumns(rows) {
+    const matrix = sheetToMatrix(sheet);
 
-    const result = {
-        headerRow: 0,
-        start: 0,
-        end: 1,
-        duration: 2
-    };
+    if (!matrix.length) {
+        return [];
+    }
 
+    let headerRow = 0;
 
-    /*
-       Search first 15 rows for a useful header.
-    */
+    if (requiredHeaders.length) {
+
+        const detected =
+            findHeaderRow(
+                sheet,
+                requiredHeaders
+            );
+
+        if (detected >= 0) {
+            headerRow = detected;
+        }
+    }
+
+    const headerValues =
+        matrix[headerRow] || [];
+
+    const headers =
+        headerValues.map(
+            value =>
+                String(value ?? "").trim()
+        );
+
+    const output = [];
 
     for (
-        let r = 0;
-        r < Math.min(rows.length, 15);
-        r++
+        let i = headerRow + 1;
+        i < matrix.length;
+        i++
     ) {
 
-        const row = rows[r] || [];
+        const row = matrix[i];
 
+        if (!row) continue;
 
-        for (let c = 0; c < row.length; c++) {
+        const object = {};
 
-            const value = String(
-                row[c] ?? ""
-            )
-                .trim()
-                .toLowerCase();
+        headers.forEach(
+            (header, index) => {
 
-
-            if (
-                value.includes("start") &&
-                (
-                    value.includes("time") ||
-                    value.includes("date")
-                )
-            ) {
-                result.start = c;
-                result.headerRow = r;
-            }
-
-
-            if (
-                value.includes("end") &&
-                (
-                    value.includes("time") ||
-                    value.includes("date")
-                )
-            ) {
-                result.end = c;
-                result.headerRow = r;
-            }
-
-
-            if (
-                value.includes("duration") ||
-                value.includes("hours")
-            ) {
-                result.duration = c;
-                result.headerRow = r;
-            }
-
-        }
-
-    }
-
-
-    return result;
-
-}
-
-
-/* =========================================================
-   PA CHART
-========================================================= */
-
-function createPAChart(records) {
-
-    const canvas = $("paChart");
-
-    if (!canvas) {
-        return;
-    }
-
-
-    /*
-       Chart.js does not natively provide a true timeline
-       without a time scale plugin.
-
-       We therefore use a horizontal bar representation
-       based on duration.
-    */
-
-    const labels = records.map(
-        (record, index) => {
-
-            if (record.start) {
-
-                return formatDateTime(
-                    record.start
-                );
-
-            }
-
-            return `Breakdown ${index + 1}`;
-
-        }
-    );
-
-
-    const durations = records.map(
-        record => {
-
-            if (record.duration !== null) {
-                return record.duration;
-            }
-
-
-            if (
-                record.start &&
-                record.end
-            ) {
-
-                return (
-                    record.end -
-                    record.start
-                ) / 3600000;
-
-            }
-
-            return 0;
-
-        }
-    );
-
-
-    charts.pa = new Chart(
-        canvas,
-        {
-            type: "bar",
-
-            data: {
-                labels,
-
-                datasets: [
-                    {
-                        label: "Duration (hours)",
-                        data: durations,
-
-                        borderWidth: 1,
-
-                        borderRadius: 4
-                    }
-                ]
-            },
-
-            options: {
-
-                responsive: true,
-
-                maintainAspectRatio: false,
-
-                animation: false,
-
-                indexAxis: "y",
-
-                plugins: {
-
-                    legend: {
-                        display: false
-                    },
-
-                    tooltip: {
-
-                        callbacks: {
-
-                            label: function(context) {
-
-                                const value =
-                                    context.raw;
-
-                                return `${value.toFixed(2)} hours`;
-
-                            }
-
-                        }
-
-                    }
-
-                },
-
-                scales: {
-
-                    x: {
-                        beginAtZero: true,
-
-                        title: {
-                            display: true,
-                            text: "Duration (hours)"
-                        }
-                    },
-
-                    y: {
-
-                        ticks: {
-                            autoSkip: true
-                        }
-
-                    }
-
+                if (header) {
+                    object[header] =
+                        row[index];
                 }
-
             }
-
-        }
-    );
-
-}
-
-
-/* =========================================================
-   CURTAILMENT
-========================================================= */
-
-function analyseCurtailment() {
-
-    const sheet = getSheet([
-        "Curtailment",
-        "Curtailment Records",
-        "Grid Curtailment"
-    ]);
-
-
-    if (!sheet) {
-
-        setText(
-            "curtailmentSummary",
-            "Curtailment worksheet not found"
         );
 
-        return;
-    }
+        const hasValue =
+            Object.values(object).some(
+                value =>
+                    value !== null &&
+                    value !== undefined &&
+                    value !== ""
+            );
 
-
-    const rows = sheetToRows(sheet);
-
-
-    if (!rows.length) {
-        return;
-    }
-
-
-    const dateIndex = findDateColumn(rows);
-
-
-    /*
-       Find a likely MW / loss column.
-    */
-
-    let valueIndex = findColumnByKeywords(
-        rows,
-        [
-            "curtailment",
-            "mw",
-            "loss",
-            "generation loss"
-        ]
-    );
-
-
-    if (valueIndex < 0) {
-
-        /*
-           Fall back to second column.
-        */
-
-        valueIndex = 1;
-
-    }
-
-
-    const records = [];
-
-
-    for (let i = 0; i < rows.length; i++) {
-
-        const row = rows[i];
-
-        if (!row) {
-            continue;
+        if (hasValue) {
+            output.push(object);
         }
+    }
 
+    return output;
+}
+
+
+/* =========================================================
+   DAILY KPI PARSER
+========================================================= */
+
+function parseDailyKPI(wb) {
+
+    const sheet =
+        wb.Sheets["Daily_KPI"];
+
+    if (!sheet) {
+        throw new Error(
+            "Daily_KPI worksheet was not found."
+        );
+    }
+
+    const data =
+        sheetToObjects(
+            sheet,
+            [
+                "Date",
+                "PA(%)",
+                "PR(%)"
+            ]
+        );
+
+    const result = [];
+
+    data.forEach(row => {
 
         const date =
-            dateIndex >= 0
-                ? parseExcelDate(row[dateIndex])
-                : null;
+            toDate(
+                row[DAILY_FIELDS.date]
+            );
 
+        if (!date) return;
 
-        const value =
-            parseNumber(row[valueIndex]);
+        result.push({
 
-
-        if (
-            date === null ||
-            value === null
-        ) {
-            continue;
-        }
-
-
-        records.push({
             date,
-            value
+
+            pa:
+                cleanNumber(
+                    row[DAILY_FIELDS.pa]
+                ),
+
+            pr:
+                cleanNumber(
+                    row[DAILY_FIELDS.pr]
+                ),
+
+            hours:
+                cleanNumber(
+                    row[DAILY_FIELDS.hours]
+                ),
+
+            loss:
+                cleanNumber(
+                    row[DAILY_FIELDS.loss]
+                ),
+
+            measured:
+                cleanNumber(
+                    row[DAILY_FIELDS.measured]
+                ),
+
+            netExport:
+                cleanNumber(
+                    row[DAILY_FIELDS.netExport]
+                ),
+
+            capacity:
+                cleanNumber(
+                    row[DAILY_FIELDS.capacity]
+                )
+
         });
+    });
 
-    }
-
-
-    if (!records.length) {
-
-        setText(
-            "curtailmentSummary",
-            "No valid curtailment records found"
+    return result
+        .filter(row => row.date)
+        .sort(
+            (a, b) =>
+                a.date - b.date
         );
-
-        return;
-
-    }
-
-
-    records.sort(
-        (a, b) =>
-            a.date - b.date
-    );
-
-
-    const total = records.reduce(
-        (sum, item) =>
-            sum + item.value,
-        0
-    );
-
-
-    setText(
-        "curtailmentSummary",
-        `${records.length} records · Total ${formatNumber(total)}`
-    );
-
-
-    createLineChart(
-        "curtailmentChart",
-        "Curtailment",
-        records.map(
-            item => item.date
-        ),
-        records.map(
-            item => item.value
-        ),
-        false,
-        true
-    );
-
 }
 
 
 /* =========================================================
-   ANNUAL ENERGY
+   PA PARSER
 ========================================================= */
 
-function analyseAnnualEnergy() {
+function parsePA(wb) {
 
-    const sheet = getSheet([
-        "Annual_KPI",
-        "Annual KPI",
-        "AnnualKPI"
-    ]);
-
+    const sheet =
+        wb.Sheets["PA"];
 
     if (!sheet) {
-        return;
+        console.warn(
+            "PA worksheet not found."
+        );
+
+        return [];
     }
 
+    const data =
+        sheetToObjects(
+            sheet,
+            [
+                "Date",
+                "Breakdown Description"
+            ]
+        );
 
-    const rows = sheetToRows(sheet);
+    return data
+        .map(row => {
+
+            const date =
+                toDate(
+                    row[PA_FIELDS.date]
+                );
+
+            if (!date) return null;
+
+            return {
+
+                date,
+
+                start:
+                    row[PA_FIELDS.start],
+
+                acknowledgement:
+                    row[PA_FIELDS.acknowledgement],
+
+                workStart:
+                    row[PA_FIELDS.workStart],
+
+                completion:
+                    row[PA_FIELDS.completion],
+
+                duration:
+                    cleanNumber(
+                        row[PA_FIELDS.duration]
+                    ),
+
+                equipment:
+                    row[PA_FIELDS.equipment] ||
+                    "Equipment",
+
+                category:
+                    row[PA_FIELDS.category] ||
+                    "Breakdown",
+
+                description:
+                    row[PA_FIELDS.description] ||
+                    "",
+
+                energyLoss:
+                    cleanNumber(
+                        row[PA_FIELDS.energyLoss]
+                    )
+
+            };
+
+        })
+        .filter(Boolean);
+}
 
 
-    /*
-       Excel:
-       E10:E21 = Budgeted
-       F10:F21 = Measured
+/* =========================================================
+   CURTAILMENT PARSER
+========================================================= */
 
-       JavaScript:
-       E = index 4
-       F = index 5
-    */
+function parseCurtailment(wb) {
 
-    const budgetIndex = 4;
-    const measuredIndex = 5;
+    const sheet =
+        wb.Sheets["Curtailment records"];
+
+    if (!sheet) {
+
+        console.warn(
+            "Curtailment records worksheet not found."
+        );
+
+        return [];
+    }
+
+    const data =
+        sheetToObjects(
+            sheet,
+            [
+                "Date",
+                "Loss of Generation MWh"
+            ]
+        );
+
+    return data
+        .map(row => {
+
+            const date =
+                toDate(
+                    row[CURTAILMENT_FIELDS.date]
+                );
+
+            if (!date) return null;
+
+            return {
+
+                date,
+
+                from:
+                    row[CURTAILMENT_FIELDS.from],
+
+                to:
+                    row[CURTAILMENT_FIELDS.to],
+
+                duration:
+                    row[CURTAILMENT_FIELDS.duration],
+
+                lossGeneration:
+                    cleanNumber(
+                        row[
+                            CURTAILMENT_FIELDS
+                                .lossGeneration
+                        ]
+                    ),
+
+                capacityLoss:
+                    cleanNumber(
+                        row[
+                            CURTAILMENT_FIELDS
+                                .capacityLoss
+                        ]
+                    ),
+
+                remark:
+                    row[
+                        CURTAILMENT_FIELDS.remark
+                    ] || "",
+
+                setPoint:
+                    cleanNumber(
+                        row[
+                            CURTAILMENT_FIELDS
+                                .setPoint
+                        ]
+                    )
+
+            };
+
+        })
+        .filter(Boolean)
+        .sort(
+            (a, b) =>
+                a.date - b.date
+        );
+}
 
 
-    const labels = [];
-    const budget = [];
-    const measured = [];
+/* =========================================================
+   ANNUAL KPI PARSER
+========================================================= */
 
+function parseAnnualKPI(wb) {
 
-    /*
-       Rows 10-21 are Excel rows.
-       JavaScript row indexes are 9-20.
-    */
+    const sheet =
+        wb.Sheets["Annual_KPI"];
+
+    if (!sheet) {
+
+        console.warn(
+            "Annual_KPI worksheet not found."
+        );
+
+        return [];
+    }
+
+    const matrix =
+        sheetToMatrix(sheet);
+
+    let headerRow = -1;
 
     for (
-        let i = 9;
-        i <= 20 && i < rows.length;
+        let i = 0;
+        i < matrix.length;
         i++
     ) {
 
-        const row = rows[i] || [];
-
-
-        const budgetValue =
-            parseNumber(row[budgetIndex]);
-
-
-        const measuredValue =
-            parseNumber(row[measuredIndex]);
-
-
-        if (
-            budgetValue === null &&
-            measuredValue === null
-        ) {
-            continue;
-        }
-
-
-        /*
-           Try to find month name from columns
-           before E.
-        */
-
-        let label = null;
-
-
-        for (let c = 0; c < 4; c++) {
-
-            const possible =
-                row[c];
-
-            if (
-                possible !== null &&
-                possible !== undefined &&
-                String(possible).trim() !== ""
-            ) {
-
-                label = String(
-                    possible
+        const values =
+            (matrix[i] || [])
+                .map(
+                    value =>
+                        String(
+                            value ?? ""
+                        )
+                            .trim()
+                            .toLowerCase()
                 );
 
-                break;
+        if (
+            values.includes(
+                "budgeted energy (gwh)"
+            ) &&
+            values.includes(
+                "measured energy (mwh) (net exp)"
+            )
+        ) {
 
-            }
-
+            headerRow = i;
+            break;
         }
-
-
-        if (!label) {
-
-            label = `Month ${labels.length + 1}`;
-
-        }
-
-
-        labels.push(label);
-
-        budget.push(
-            budgetValue ?? 0
-        );
-
-        measured.push(
-            measuredValue ?? 0
-        );
-
     }
 
+    if (headerRow < 0) {
 
-    if (!labels.length) {
-        return;
-    }
-
-
-    const totalBudget =
-        budget.reduce(
-            (sum, value) =>
-                sum + value,
-            0
+        console.warn(
+            "Monthwise Annual_KPI table not found."
         );
 
-
-    const totalMeasured =
-        measured.reduce(
-            (sum, value) =>
-                sum + value,
-            0
-        );
-
-
-    const variance =
-        totalMeasured -
-        totalBudget;
-
-
-    setText(
-        "totalBudget",
-        formatNumber(totalBudget)
-    );
-
-
-    setText(
-        "totalMeasured",
-        formatNumber(totalMeasured)
-    );
-
-
-    setText(
-        "energyVariance",
-        formatNumber(variance)
-    );
-
-
-    createEnergyChart(
-        labels,
-        budget,
-        measured
-    );
-
-}
-
-
-/* =========================================================
-   ENERGY CHART
-========================================================= */
-
-function createEnergyChart(
-    labels,
-    budget,
-    measured
-) {
-
-    const canvas = $("energyChart");
-
-    if (!canvas) {
-        return;
+        return [];
     }
 
+    const headers =
+        matrix[headerRow].map(
+            value =>
+                String(value ?? "").trim()
+        );
 
-    charts.energy = new Chart(
-        canvas,
-        {
-            type: "bar",
+    const rows = [];
 
-            data: {
+    for (
+        let i = headerRow + 1;
+        i < matrix.length;
+        i++
+    ) {
 
-                labels,
+        const row = matrix[i];
 
-                datasets: [
+        if (!row) continue;
 
-                    {
-                        label: "Budgeted Energy",
-                        data: budget,
+        const obj = {};
 
-                        borderWidth: 1,
+        headers.forEach(
+            (header, index) => {
 
-                        borderRadius: 4
-                    },
-
-                    {
-                        label: "Measured Energy",
-                        data: measured,
-
-                        borderWidth: 1,
-
-                        borderRadius: 4
-                    }
-
-                ]
-
-            },
-
-            options: {
-
-                responsive: true,
-
-                maintainAspectRatio: false,
-
-                animation: false,
-
-                interaction: {
-                    mode: "index",
-                    intersect: false
-                },
-
-                plugins: {
-
-                    legend: {
-                        display: true
-                    }
-
-                },
-
-                scales: {
-
-                    x: {
-                        ticks: {
-                            autoSkip: false
-                        }
-                    },
-
-                    y: {
-
-                        beginAtZero: true,
-
-                        title: {
-                            display: true,
-                            text: "Energy"
-                        }
-
-                    }
-
+                if (header) {
+                    obj[header] =
+                        row[index];
                 }
-
             }
+        );
 
-        }
-    );
+        const date =
+            toDate(
+                obj["Year"]
+            );
 
+        if (!date) continue;
+
+        const budget =
+            cleanNumber(
+                obj[
+                    "Budgeted Energy (GWh)"
+                ]
+            );
+
+        const measured =
+            cleanNumber(
+                obj[
+                    "Measured Energy (MWh) (Net Exp)"
+                ]
+            );
+
+        /*
+           Budget is stored in GWh.
+           Convert to MWh so both values use
+           the same unit.
+        */
+
+        rows.push({
+
+            date,
+
+            budgetMWh:
+                Number.isFinite(budget)
+                    ? budget * 1000
+                    : NaN,
+
+            measuredMWh:
+                measured
+
+        });
+    }
+
+    return rows;
 }
 
 
@@ -1568,225 +859,84 @@ function createEnergyChart(
    CHART HELPERS
 ========================================================= */
 
-function createLineChart(
-    canvasId,
-    label,
-    dates,
-    values,
-    percentage = false,
-    showTime = false
-) {
+function destroyChart(id) {
 
-    const canvas = $(canvasId);
+    if (charts[id]) {
 
-    if (!canvas) {
-        return;
+        charts[id].destroy();
+
+        delete charts[id];
     }
+}
 
 
-    const chartKey =
-        Object.keys(charts).find(
-            key =>
-                canvasId.toLowerCase()
-                    .includes(
-                        key.toLowerCase()
-                    )
-        );
+function baseOptions() {
 
+    return {
 
-    const labels =
-        dates.map(
-            date => date
-        );
+        responsive: true,
 
+        maintainAspectRatio: false,
 
-    const config = {
+        animation: false,
 
-        type: "line",
+        interaction: {
+            mode: "index",
+            intersect: false
+        },
 
-        data: {
+        plugins: {
 
-            labels,
+            legend: {
+                display: true,
+                position: "top"
+            },
 
-            datasets: [
+            tooltip: {
 
-                {
-                    label,
+                callbacks: {
 
-                    data: values,
+                    title(items) {
 
-                    tension: 0.25,
+                        if (!items.length) {
+                            return "";
+                        }
 
-                    pointRadius: 3,
+                        return items[0].label;
+                    }
 
-                    pointHoverRadius: 5,
-
-                    borderWidth: 2,
-
-                    fill: false
                 }
 
-            ]
+            }
 
         },
 
-        options: {
+        scales: {
 
-            responsive: true,
+            x: {
 
-            maintainAspectRatio: false,
-
-            animation: false,
-
-            interaction: {
-
-                mode: "nearest",
-
-                intersect: false
-
-            },
-
-            plugins: {
-
-                legend: {
+                grid: {
                     display: false
                 },
 
-                tooltip: {
+                ticks: {
 
-                    callbacks: {
+                    autoSkip: false,
 
-                        title: function(items) {
+                    maxRotation: 0,
 
-                            if (
-                                !items ||
-                                !items.length
-                            ) {
-                                return "";
-                            }
-
-
-                            const value =
-                                items[0].label;
-
-
-                            if (
-                                value instanceof Date
-                            ) {
-
-                                return showTime
-                                    ? formatDateTime(value)
-                                    : formatDate(value);
-
-                            }
-
-
-                            return value;
-
-                        },
-
-                        label: function(context) {
-
-                            const value =
-                                context.raw;
-
-
-                            if (
-                                percentage &&
-                                value !== null &&
-                                value !== undefined
-                            ) {
-
-                                return `${value.toFixed(2)}%`;
-
-                            }
-
-
-                            return `${value}`;
-
-                        }
-
-                    }
+                    minRotation: 0
 
                 }
 
             },
 
-            scales: {
+            y: {
 
-                x: {
+                beginAtZero: false,
 
-                    type: "category",
-
-                    /*
-                       The labels themselves are dates,
-                       but category labels prevent Chart.js
-                       from doing strange numerical date
-                       interpolation.
-                    */
-
-                    ticks: {
-
-                        autoSkip: true,
-
-                        maxTicksLimit:
-                            calculateMaxTicks(
-                                dates.length
-                            ),
-
-                        callback: function(
-                            value,
-                            index
-                        ) {
-
-                            const date =
-                                dates[index];
-
-
-                            if (
-                                !(date instanceof Date)
-                            ) {
-                                return date;
-                            }
-
-
-                            if (showTime) {
-
-                                return formatDateTime(
-                                    date
-                                );
-
-                            }
-
-
-                            return formatDate(
-                                date
-                            );
-
-                        }
-
-                    }
-
-                },
-
-                y: {
-
-                    beginAtZero: false,
-
-                    ticks: {
-
-                        callback: function(value) {
-
-                            if (percentage) {
-                                return `${value}%`;
-                            }
-
-                            return value;
-
-                        }
-
-                    }
-
+                ticks: {
+                    maxTicksLimit: 8
                 }
 
             }
@@ -1794,99 +944,650 @@ function createLineChart(
         }
 
     };
-
-
-    charts[chartKey || canvasId] =
-        new Chart(
-            canvas,
-            config
-        );
-
 }
 
 
 /* =========================================================
-   SCATTER CHART
+   DAILY DATE AXIS
+   IMPORTANT:
+   Shows proper date intervals instead of:
+   29, 31, 31, 29
 ========================================================= */
 
-function createScatterChart(
-    canvasId,
-    label,
-    dates,
-    values,
-    percentage = false
-) {
+function dateAxisOptions(rows) {
 
-    const canvas = $(canvasId);
+    const dates =
+        rows.map(
+            row => row.date
+        );
 
-    if (!canvas) {
-        return;
-    }
+    const uniqueMonths =
+        [
+            ...new Set(
+                dates.map(
+                    date =>
+                        `${date.getFullYear()}-${date.getMonth()}`
+                )
+            )
+        ];
 
+    return {
 
-    const points = [];
+        grid: {
+            display: false
+        },
 
+        ticks: {
 
-    dates.forEach(
-        (date, index) => {
+            autoSkip: false,
 
-            const value =
-                values[index];
+            maxRotation: 0,
 
+            minRotation: 0,
 
-            if (
-                date instanceof Date &&
-                value !== null &&
-                value !== undefined &&
-                Number.isFinite(value)
-            ) {
+            callback(value, index) {
 
-                points.push({
-                    x: date,
-                    y: value
-                });
+                const date =
+                    dates[index];
 
+                if (!date) {
+                    return "";
+                }
+
+                /*
+                   If the selected data spans
+                   more than one month, show
+                   month + date.
+
+                   If it is one month, show
+                   even-numbered dates:
+                   2, 4, 6, 8, 10...
+                */
+
+                if (uniqueMonths.length > 1) {
+
+                    return `${date.getDate()} ${date.toLocaleDateString(
+                        "en-IN",
+                        { month: "short" }
+                    )}`;
+                }
+
+                const day =
+                    date.getDate();
+
+                return day % 2 === 0
+                    ? day
+                    : "";
             }
 
+        }
+
+    };
+}
+
+
+/* =========================================================
+   CREATE LINE CHART
+========================================================= */
+
+function createLineChart(
+    id,
+    labels,
+    datasets,
+    yOptions = {}
+) {
+
+    if (!$(id)) return;
+
+    destroyChart(id);
+
+    const options =
+        baseOptions();
+
+    options.scales.y =
+        {
+            ...options.scales.y,
+            ...yOptions
+        };
+
+    charts[id] =
+        new Chart(
+            $(id),
+            {
+                type: "line",
+
+                data: {
+                    labels,
+                    datasets
+                },
+
+                options
+            }
+        );
+}
+
+
+/* =========================================================
+   DAILY CHART DATASET
+========================================================= */
+
+function lineDataset(
+    label,
+    data
+) {
+
+    return {
+
+        label,
+
+        data,
+
+        borderWidth: 2,
+
+        pointRadius: 2,
+
+        pointHoverRadius: 4,
+
+        tension: 0.25,
+
+        fill: false
+
+    };
+}
+
+
+/* =========================================================
+   FILTERED DAILY DATA
+========================================================= */
+
+function getFilteredDailyRows() {
+
+    if (!dailyRows.length) {
+        return [];
+    }
+
+    const fromValue =
+        $("fromDate")?.value;
+
+    const toValue =
+        $("toDate")?.value;
+
+    if (fromValue || toValue) {
+
+        const from =
+            fromValue
+                ? new Date(
+                    `${fromValue}T00:00:00`
+                )
+                : null;
+
+        const to =
+            toValue
+                ? new Date(
+                    `${toValue}T23:59:59`
+                )
+                : null;
+
+        return dailyRows.filter(
+            row =>
+                (!from || row.date >= from) &&
+                (!to || row.date <= to)
+        );
+    }
+
+    return dailyRows;
+}
+
+
+/* =========================================================
+   DAILY CHARTS
+========================================================= */
+
+function renderDailyCharts(rows) {
+
+    if (!rows.length) return;
+
+    const labels =
+        rows.map(
+            row =>
+                shortDate(row.date)
+        );
+
+    /* ---------------- PA ---------------- */
+
+    createLineChart(
+        "paChart",
+        labels,
+        [
+            lineDataset(
+                "PA (%)",
+                rows.map(
+                    row =>
+                        Number.isFinite(row.pa)
+                            ? row.pa * 100
+                            : NaN
+                )
+            )
+        ],
+        {
+            min: 0,
+            max: 100,
+            ticks: {
+                callback:
+                    value =>
+                        `${value}%`
+            }
         }
     );
 
 
-    const key =
-        Object.keys(charts).find(
-            item =>
-                canvasId.toLowerCase()
-                    .includes(
-                        item.toLowerCase()
-                    )
+    /* ---------------- PR ---------------- */
+
+    createLineChart(
+        "prChart",
+        labels,
+        [
+            lineDataset(
+                "PR (%)",
+                rows.map(
+                    row =>
+                        Number.isFinite(row.pr)
+                            ? row.pr * 100
+                            : NaN
+                )
+            )
+        ],
+        {
+            min: 0,
+            max: 100,
+            ticks: {
+                callback:
+                    value =>
+                        `${value}%`
+            }
+        }
+    );
+
+
+    /* ---------------- HOURS ---------------- */
+
+    createLineChart(
+        "hoursChart",
+        labels,
+        [
+            lineDataset(
+                "Operating Hours",
+                rows.map(
+                    row =>
+                        row.hours
+                )
+            )
+        ],
+        {
+            beginAtZero: true,
+            ticks: {
+                callback:
+                    value =>
+                        `${value} h`
+            }
+        }
+    );
+
+
+    /* ---------------- SYSTEM LOSS ---------------- */
+
+    createLineChart(
+        "lossChart",
+        labels,
+        [
+            lineDataset(
+                "System Loss (%)",
+                rows.map(
+                    row =>
+                        Number.isFinite(row.loss)
+                            ? row.loss * 100
+                            : NaN
+                )
+            )
+        ],
+        {
+            beginAtZero: true,
+            ticks: {
+                callback:
+                    value =>
+                        `${value}%`
+            }
+        }
+    );
+
+
+    /* ---------------- DASHBOARD PR ---------------- */
+
+    createLineChart(
+        "dashboardPRChart",
+        labels,
+        [
+            lineDataset(
+                "PR (%)",
+                rows.map(
+                    row =>
+                        Number.isFinite(row.pr)
+                            ? row.pr * 100
+                            : NaN
+                )
+            )
+        ],
+        {
+            min: 0,
+            max: 100,
+            ticks: {
+                callback:
+                    value =>
+                        `${value}%`
+            }
+        }
+    );
+
+
+    /* ---------------- DASHBOARD LOSS ---------------- */
+
+    createLineChart(
+        "dashboardLossChart",
+        labels,
+        [
+            lineDataset(
+                "System Loss (%)",
+                rows.map(
+                    row =>
+                        Number.isFinite(row.loss)
+                            ? row.loss * 100
+                            : NaN
+                )
+            )
+        ],
+        {
+            beginAtZero: true,
+            ticks: {
+                callback:
+                    value =>
+                        `${value}%`
+            }
+        }
+    );
+}
+
+
+/* =========================================================
+   PA BREAKDOWN TIMELINE
+========================================================= */
+
+function renderPAChart() {
+
+    if (!paRows.length || !$("paChart")) {
+        return;
+    }
+
+    /*
+       The PA worksheet is event-based.
+
+       We display the breakdown records as a
+       duration chart using horizontal bars.
+    */
+
+    const labels =
+        paRows.map(
+            row =>
+                `${fullDate(row.date)} — ${row.equipment}`
         );
 
+    const values =
+        paRows.map(
+            row =>
+                Number.isFinite(row.duration)
+                    ? row.duration
+                    : 0
+        );
 
-    charts[key || canvasId] =
+    destroyChart("paChart");
+
+    charts.paChart =
         new Chart(
-            canvas,
+            $("paChart"),
             {
-
-                type: "scatter",
+                type: "bar",
 
                 data: {
+
+                    labels,
+
+                    datasets: [
+                        {
+                            label:
+                                "Breakdown Duration (hrs)",
+
+                            data: values,
+
+                            borderWidth: 1
+                        }
+                    ]
+                },
+
+                options: {
+
+                    indexAxis: "y",
+
+                    responsive: true,
+
+                    maintainAspectRatio: false,
+
+                    animation: false,
+
+                    plugins: {
+
+                        legend: {
+                            display: true
+                        },
+
+                        tooltip: {
+
+                            callbacks: {
+
+                                afterLabel(context) {
+
+                                    const row =
+                                        paRows[
+                                            context.dataIndex
+                                        ];
+
+                                    return [
+                                        `Start: ${formatTime(row.start)}`,
+                                        `Completion: ${formatTime(row.completion)}`,
+                                        `Equipment: ${row.equipment}`,
+                                        `Category: ${row.category}`
+                                    ];
+                                }
+
+                            }
+
+                        }
+
+                    },
+
+                    scales: {
+
+                        x: {
+
+                            beginAtZero: true,
+
+                            title: {
+                                display: true,
+                                text:
+                                    "Breakdown Duration (Hours)"
+                            }
+
+                        },
+
+                        y: {
+
+                            ticks: {
+                                autoSkip: false
+                            }
+
+                        }
+
+                    }
+
+                }
+
+            }
+        );
+}
+
+
+/* =========================================================
+   CURTAILMENT CHART
+========================================================= */
+
+function renderCurtailmentChart() {
+
+    if (
+        !curtailmentRows.length ||
+        !$("curtailmentChart")
+    ) {
+        return;
+    }
+
+    const labels =
+        curtailmentRows.map(
+            row =>
+                `${shortDate(row.date)} ${formatTime(row.from)}`
+        );
+
+    const values =
+        curtailmentRows.map(
+            row =>
+                Number.isFinite(
+                    row.lossGeneration
+                )
+                    ? row.lossGeneration
+                    : 0
+        );
+
+    createLineChart(
+        "curtailmentChart",
+        labels,
+        [
+            lineDataset(
+                "Curtailment Loss (MWh)",
+                values
+            )
+        ],
+        {
+            beginAtZero: true,
+            ticks: {
+                callback:
+                    value =>
+                        `${value} MWh`
+            }
+        }
+    );
+
+
+    const total =
+        values.reduce(
+            (sum, value) =>
+                sum +
+                (
+                    Number.isFinite(value)
+                        ? value
+                        : 0
+                ),
+            0
+        );
+
+    const records =
+        curtailmentRows.length;
+
+    if ($("curtailmentSummary")) {
+
+        $("curtailmentSummary").textContent =
+            `${records.toLocaleString(
+                "en-IN"
+            )} curtailment records • ` +
+            `${formatNumber(
+                total
+            )} MWh estimated generation loss`;
+    }
+}
+
+
+/* =========================================================
+   ENERGY CHART
+========================================================= */
+
+function renderEnergyChart() {
+
+    if (
+        !annualRows.length ||
+        !$("energyChart")
+    ) {
+        return;
+    }
+
+    const labels =
+        annualRows.map(
+            row =>
+                row.date.toLocaleDateString(
+                    "en-IN",
+                    {
+                        month: "short"
+                    }
+                )
+        );
+
+    const budget =
+        annualRows.map(
+            row =>
+                row.budgetMWh
+        );
+
+    const measured =
+        annualRows.map(
+            row =>
+                row.measuredMWh
+        );
+
+    destroyChart("energyChart");
+
+    charts.energyChart =
+        new Chart(
+            $("energyChart"),
+            {
+
+                type: "bar",
+
+                data: {
+
+                    labels,
 
                     datasets: [
 
                         {
-                            label,
+                            label:
+                                "Budgeted Energy (MWh)",
 
-                            data: points,
+                            data: budget,
 
-                            showLine: true,
+                            borderWidth: 1
+                        },
 
-                            tension: 0.25,
+                        {
+                            label:
+                                "Measured Energy (MWh)",
 
-                            pointRadius: 3,
+                            data: measured,
 
-                            pointHoverRadius: 5,
-
-                            borderWidth: 2
+                            borderWidth: 1
                         }
 
                     ]
@@ -1901,62 +1602,11 @@ function createScatterChart(
 
                     animation: false,
 
-                    interaction: {
-
-                        mode: "nearest",
-
-                        intersect: false
-
-                    },
-
                     plugins: {
 
                         legend: {
-                            display: false
-                        },
-
-                        tooltip: {
-
-                            callbacks: {
-
-                                title: function(items) {
-
-                                    if (
-                                        !items.length
-                                    ) {
-                                        return "";
-                                    }
-
-
-                                    const raw =
-                                        items[0].raw;
-
-
-                                    return formatDate(
-                                        new Date(raw.x)
-                                    );
-
-                                },
-
-                                label: function(context) {
-
-                                    const value =
-                                        context.parsed.y;
-
-
-                                    if (percentage) {
-
-                                        return `${value.toFixed(2)}%`;
-
-                                    }
-
-
-                                    return value;
-
-                                }
-
-                            }
-
+                            display: true,
+                            position: "top"
                         }
 
                     },
@@ -1964,55 +1614,24 @@ function createScatterChart(
                     scales: {
 
                         x: {
-
-                            type: "linear",
-
-                            /*
-                               IMPORTANT:
-                               Dates are stored internally as
-                               timestamps. We explicitly control
-                               the displayed date intervals.
-                            */
-
-                            ticks: {
-
-                                autoSkip: true,
-
-                                maxTicksLimit:
-                                    calculateMaxTicks(
-                                        dates.length
-                                    ),
-
-                                callback: function(value) {
-
-                                    const date =
-                                        new Date(value);
-
-
-                                    return formatDate(
-                                        date
-                                    );
-
-                                }
-
+                            grid: {
+                                display: false
                             }
-
                         },
 
                         y: {
 
+                            beginAtZero: true,
+
                             ticks: {
 
-                                callback: function(value) {
-
-                                    if (percentage) {
-                                        return `${value}%`;
-                                    }
-
-                                    return value;
-
-                                }
-
+                                callback:
+                                    value =>
+                                        `${Number(
+                                            value
+                                        ).toLocaleString(
+                                            "en-IN"
+                                        )} MWh`
                             }
 
                         }
@@ -2023,737 +1642,861 @@ function createScatterChart(
 
             }
         );
-
 }
 
 
 /* =========================================================
-   DATE AXIS TICK CALCULATION
+   KPI CARDS
 ========================================================= */
 
-function calculateMaxTicks(dataLength) {
+function renderKPIs(rows) {
 
-    /*
-       The important part for your July problem.
+    if (!rows.length) return;
 
-       We do NOT let Chart.js generate random repeated
-       date labels.
-
-       Instead:
-
-       1-7 days    -> every 1 day
-       8-15 days   -> every 2 days
-       16-31 days  -> every 2-3 days
-       32-60 days  -> approximately every 7 days
-       etc.
-
-       This prevents:
-       29, 31, 31, 29
-       type behaviour.
-    */
-
-    if (dataLength <= 7) {
-        return dataLength;
-    }
-
-    if (dataLength <= 15) {
-        return 8;
-    }
-
-    if (dataLength <= 31) {
-        return 10;
-    }
-
-    if (dataLength <= 60) {
-        return 9;
-    }
-
-    if (dataLength <= 120) {
-        return 10;
-    }
-
-    return 12;
-
-}
+    const latest =
+        rows[rows.length - 1];
 
 
-/* =========================================================
-   FIND DATE COLUMN
-========================================================= */
+    /* PA */
 
-function findDateColumn(rows) {
+    if ($("dashboardPA")) {
 
-    if (!rows || !rows.length) {
-        return -1;
+        $("dashboardPA").textContent =
+            formatPercent(
+                latest.pa
+            );
     }
 
 
-    /*
-       First try headers.
-    */
+    /* PR */
 
-    for (
-        let r = 0;
-        r < Math.min(rows.length, 10);
-        r++
-    ) {
+    if ($("dashboardPR")) {
 
-        const row = rows[r] || [];
-
-
-        for (
-            let c = 0;
-            c < row.length;
-            c++
-        ) {
-
-            const text =
-                String(row[c] ?? "")
-                    .trim()
-                    .toLowerCase();
-
-
-            if (
-                text === "date" ||
-                text.includes("date") ||
-                text.includes("day")
-            ) {
-
-                return c;
-
-            }
-
-        }
-
+        $("dashboardPR").textContent =
+            formatPercent(
+                latest.pr
+            );
     }
 
 
-    /*
-       If there is no obvious header,
-       inspect the first few columns for
-       Excel dates.
-    */
+    /* SYSTEM LOSS */
 
-    const maxColumns =
-        Math.min(
-            15,
-            Math.max(
-                ...rows.map(
-                    row =>
-                        row
-                            ? row.length
-                            : 0
-                )
+    if ($("dashboardLoss")) {
+
+        $("dashboardLoss").textContent =
+            formatPercent(
+                latest.loss
+            );
+    }
+
+
+    /* OPERATING HOURS */
+
+    if ($("dashboardHours")) {
+
+        $("dashboardHours").textContent =
+            Number.isFinite(
+                latest.hours
             )
+                ? `${latest.hours.toFixed(2)} h`
+                : "—";
+    }
+}
+
+
+/* =========================================================
+   ENERGY SUMMARY
+========================================================= */
+
+function renderEnergySummary() {
+
+    if (!annualRows.length) return;
+
+    const totalBudget =
+        annualRows.reduce(
+            (sum, row) =>
+                sum +
+                (
+                    Number.isFinite(
+                        row.budgetMWh
+                    )
+                        ? row.budgetMWh
+                        : 0
+                ),
+            0
         );
 
+    const totalMeasured =
+        annualRows.reduce(
+            (sum, row) =>
+                sum +
+                (
+                    Number.isFinite(
+                        row.measuredMWh
+                    )
+                        ? row.measuredMWh
+                        : 0
+                ),
+            0
+        );
 
-    for (
-        let c = 0;
-        c < maxColumns;
-        c++
-    ) {
-
-        let validDates = 0;
-
-
-        for (
-            let r = 0;
-            r < Math.min(rows.length, 20);
-            r++
-        ) {
-
-            if (
-                parseExcelDate(
-                    rows[r]?.[c]
-                ) !== null
-            ) {
-
-                validDates++;
-
-            }
-
-        }
+    const variance =
+        totalMeasured -
+        totalBudget;
 
 
-        if (validDates >= 3) {
-            return c;
-        }
+    if ($("totalBudget")) {
 
+        $("totalBudget").textContent =
+            `${formatNumber(
+                totalBudget
+            )} MWh`;
     }
 
 
-    return -1;
+    if ($("totalMeasured")) {
 
+        $("totalMeasured").textContent =
+            `${formatNumber(
+                totalMeasured
+            )} MWh`;
+    }
+
+
+    if ($("energyVariance")) {
+
+        $("energyVariance").textContent =
+            `${formatNumber(
+                variance
+            )} MWh`;
+    }
 }
 
 
 /* =========================================================
-   FIND COLUMN BY KEYWORDS
+   WORKBOOK STATUS
 ========================================================= */
 
-function findColumnByKeywords(
-    rows,
-    keywords
-) {
+function renderWorkbookStatus() {
 
-    if (!rows || !rows.length) {
-        return -1;
+    if (!$("sheetBadges")) {
+        return;
     }
 
+    const requiredSheets = [
+        "Dashboard",
+        "Annual_KPI",
+        "Daily_KPI",
+        "PA",
+        "Curtailment records"
+    ];
 
-    for (
-        let r = 0;
-        r < Math.min(rows.length, 10);
-        r++
-    ) {
+    $("sheetBadges").innerHTML = "";
 
-        const row = rows[r] || [];
+    requiredSheets.forEach(
+        sheetName => {
 
+            const badge =
+                document.createElement(
+                    "span"
+                );
 
-        for (
-            let c = 0;
-            c < row.length;
-            c++
-        ) {
-
-            const text =
-                String(row[c] ?? "")
-                    .trim()
-                    .toLowerCase();
-
+            badge.className =
+                "sheet-badge";
 
             if (
-                keywords.some(
-                    keyword =>
-                        text.includes(
-                            keyword.toLowerCase()
-                        )
+                workbook &&
+                workbook.SheetNames.includes(
+                    sheetName
                 )
             ) {
 
-                return c;
+                badge.textContent =
+                    `✓ ${sheetName}`;
 
+            } else {
+
+                badge.classList.add(
+                    "missing"
+                );
+
+                badge.textContent =
+                    `✕ ${sheetName}`;
             }
 
+            $("sheetBadges")
+                .appendChild(badge);
         }
-
-    }
-
-
-    return -1;
-
+    );
 }
 
 
 /* =========================================================
-   EXCEL DATE PARSER
+   FILE UI
 ========================================================= */
 
-function parseExcelDate(value) {
+function showUploadedFile(file) {
 
-    if (
-        value === null ||
-        value === undefined ||
-        value === ""
-    ) {
+    if ($("fileName")) {
 
-        return null;
+        $("fileName").textContent =
+            file.name;
+    }
 
+    if ($("fileSheets")) {
+
+        $("fileSheets").textContent =
+            `${workbook.SheetNames.length} worksheets detected`;
+    }
+
+    if ($("sidebarFileName")) {
+
+        $("sidebarFileName").textContent =
+            file.name;
+    }
+
+    $("fileInfo")?.classList.remove(
+        "hidden"
+    );
+
+    $("workbookStatus")?.classList.remove(
+        "hidden"
+    );
+
+    $("dropZone")?.classList.add(
+        "hidden"
+    );
+
+    $("emptyState")?.classList.add(
+        "hidden"
+    );
+}
+
+
+/* =========================================================
+   DATE FILTER SETUP
+========================================================= */
+
+function setupDateFilters() {
+
+    if (!dailyRows.length) return;
+
+    const first =
+        dailyRows[0].date;
+
+    const last =
+        dailyRows[
+            dailyRows.length - 1
+        ].date;
+
+    const min =
+        isoDate(first);
+
+    const max =
+        isoDate(last);
+
+
+    if ($("fromDate")) {
+
+        $("fromDate").min = min;
+        $("fromDate").max = max;
+    }
+
+    if ($("toDate")) {
+
+        $("toDate").min = min;
+        $("toDate").max = max;
+    }
+}
+
+
+/* =========================================================
+   FULL RENDER
+========================================================= */
+
+function renderAll() {
+
+    if (!dailyRows.length) {
+        return;
+    }
+
+    const filtered =
+        getFilteredDailyRows();
+
+    if (!filtered.length) {
+        return;
     }
 
 
+    renderKPIs(
+        filtered
+    );
+
+
     /*
-       Already a JavaScript Date
+       PA chart uses PA worksheet events.
+       Daily PA trend uses Daily_KPI.
     */
 
-    if (
-        Object.prototype.toString.call(value) ===
-        "[object Date]"
-    ) {
+    renderPAChart();
+
+
+    /*
+       The PA worksheet chart is a separate
+       event timeline, so create daily charts
+       after it.
+    */
+
+    renderDailyCharts(
+        filtered
+    );
+
+    renderCurtailmentChart();
+
+    renderEnergySummary();
+
+    renderEnergyChart();
+
+
+    if ($("statusText")) {
+
+        const latest =
+            filtered[
+                filtered.length - 1
+            ];
+
+        $("statusText").textContent =
+            `${filtered.length} DGR days analysed • ` +
+            `Latest data: ${fullDate(
+                latest.date
+            )}`;
+    }
+}
+
+
+/* =========================================================
+   FILE PROCESSING
+========================================================= */
+
+async function handleFile(file) {
+
+    if (!file) return;
+
+    try {
 
         if (
-            Number.isNaN(
-                value.getTime()
-            )
+            typeof XLSX === "undefined"
         ) {
 
-            return null;
-
-        }
-
-        return value;
-
-    }
-
-
-    /*
-       Excel serial date
-    */
-
-    if (
-        typeof value === "number" &&
-        Number.isFinite(value)
-    ) {
-
-        /*
-           Excel dates are generally > 1.
-           Ignore implausible values.
-        */
-
-        if (
-            value > 1 &&
-            value < 100000
-        ) {
-
-            const parsed =
-                XLSX.SSF.parse_date_code(
-                    value
-                );
-
-
-            if (parsed) {
-
-                return new Date(
-                    parsed.y,
-                    parsed.m - 1,
-                    parsed.d,
-                    parsed.H || 0,
-                    parsed.M || 0,
-                    parsed.S || 0
-                );
-
-            }
-
-        }
-
-        return null;
-
-    }
-
-
-    /*
-       String date
-    */
-
-    if (typeof value === "string") {
-
-        const trimmed =
-            value.trim();
-
-
-        if (!trimmed) {
-            return null;
+            throw new Error(
+                "SheetJS library is not loaded."
+            );
         }
 
 
-        /*
-           DD/MM/YYYY
-           DD-MM-YYYY
-        */
+        const buffer =
+            await file.arrayBuffer();
 
-        const match =
-            trimmed.match(
-                /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/
+
+        workbook =
+            XLSX.read(
+                buffer,
+                {
+                    type: "array",
+                    cellDates: true
+                }
             );
 
 
-        if (match) {
+        /* ---------------- DAILY KPI ---------------- */
 
-            const day =
-                Number(match[1]);
-
-            const month =
-                Number(match[2]) - 1;
-
-            const year =
-                Number(match[3]);
+        dailyRows =
+            parseDailyKPI(
+                workbook
+            );
 
 
-            const date =
-                new Date(
-                    year,
-                    month,
-                    day
-                );
+        if (!dailyRows.length) {
 
-
-            if (
-                date.getFullYear() === year &&
-                date.getMonth() === month &&
-                date.getDate() === day
-            ) {
-
-                return date;
-
-            }
-
+            throw new Error(
+                "No usable daily records were found in the Daily_KPI worksheet."
+            );
         }
+
+
+        /* ---------------- PA ---------------- */
+
+        paRows =
+            parsePA(
+                workbook
+            );
+
+
+        /* ---------------- CURTAILMENT ---------------- */
+
+        curtailmentRows =
+            parseCurtailment(
+                workbook
+            );
+
+
+        /* ---------------- ANNUAL KPI ---------------- */
+
+        annualRows =
+            parseAnnualKPI(
+                workbook
+            );
+
+
+        /* ---------------- UI ---------------- */
+
+        showUploadedFile(
+            file
+        );
+
+        renderWorkbookStatus();
+
+        setupDateFilters();
+
+        renderAll();
 
 
         /*
-           Let JavaScript handle ISO-like dates.
+           Mapping information
         */
 
-        const parsed =
-            new Date(trimmed);
+        if ($("mappingInfo")) {
 
+            $("mappingInfo").innerHTML =
 
-        if (
-            !Number.isNaN(
-                parsed.getTime()
-            )
-        ) {
-
-            return parsed;
-
+                `<strong>Daily KPI:</strong> PA, PR, Operating Hours and System Losses<br>
+                 <strong>PA:</strong> Breakdown events and durations<br>
+                 <strong>Curtailment:</strong> Loss of Generation MWh<br>
+                 <strong>Annual KPI:</strong> Monthly Budgeted vs Measured Energy`;
         }
 
-    }
 
-
-    return null;
-
-}
-
-
-/* =========================================================
-   NUMBER PARSER
-========================================================= */
-
-function parseNumber(value) {
-
-    if (
-        value === null ||
-        value === undefined ||
-        value === ""
-    ) {
-
-        return null;
-
-    }
-
-
-    if (typeof value === "number") {
-
-        return Number.isFinite(value)
-            ? value
-            : null;
-
-    }
-
-
-    let text =
-        String(value)
-            .trim()
-            .replace(/,/g, "")
-            .replace(/%/g, "");
-
-
-    if (!text) {
-        return null;
-    }
-
-
-    const number =
-        Number(text);
-
-
-    return Number.isFinite(number)
-        ? number
-        : null;
-
-}
-
-
-/* =========================================================
-   FORMATTING
-========================================================= */
-
-function formatNumber(value) {
-
-    if (
-        value === null ||
-        value === undefined ||
-        !Number.isFinite(value)
-    ) {
-
-        return "—";
-
-    }
-
-
-    return value.toLocaleString(
-        "en-IN",
-        {
-            maximumFractionDigits: 2
-        }
-    );
-
-}
-
-
-function formatPercent(value) {
-
-    if (
-        value === null ||
-        value === undefined ||
-        !Number.isFinite(value)
-    ) {
-
-        return "—";
-
-    }
-
-
-    return `${value.toFixed(2)}%`;
-
-}
-
-
-function formatDate(date) {
-
-    if (!(date instanceof Date)) {
-        return String(date ?? "");
-    }
-
-
-    return date.toLocaleDateString(
-        "en-GB",
-        {
-            day: "2-digit",
-            month: "short"
-        }
-    );
-
-}
-
-
-function formatDateTime(date) {
-
-    if (!(date instanceof Date)) {
-        return String(date ?? "");
-    }
-
-
-    return date.toLocaleString(
-        "en-GB",
-        {
-            day: "2-digit",
-            month: "short",
-            year: "numeric",
-            hour: "2-digit",
-            minute: "2-digit"
-        }
-    );
-
-}
-
-
-/* =========================================================
-   SHOW / HIDE ANALYTICS
-========================================================= */
-
-function hideAnalyticsSections() {
-
-    /*
-       Do NOT hide the upload panel.
-
-       These are the actual analytics sections.
-    */
-
-    [
-        "dashboardSection",
-        "paSection",
-        "performanceSection",
-        "curtailmentSection",
-        "energySection"
-    ].forEach(hide);
-
-}
-
-
-function showAnalyticsSections() {
-
-    [
-        "dashboardSection",
-        "paSection",
-        "performanceSection",
-        "curtailmentSection",
-        "energySection"
-    ].forEach(show);
-
-}
-
-
-/* =========================================================
-   DESTROY CHARTS
-========================================================= */
-
-function destroyCharts() {
-
-    Object.keys(charts).forEach(
-        key => {
-
-            if (
-                charts[key] &&
-                typeof charts[key].destroy ===
-                "function"
-            ) {
-
-                try {
-                    charts[key].destroy();
-                } catch (error) {
-                    console.warn(
-                        `Could not destroy ${key}`,
-                        error
-                    );
-                }
-
+        console.log(
+            "DGR successfully loaded",
+            {
+                dailyRows,
+                paRows,
+                curtailmentRows,
+                annualRows
             }
+        );
 
 
-            charts[key] = null;
+    } catch (error) {
 
-        }
-    );
+        console.error(
+            "DGR upload error:",
+            error
+        );
 
+        alert(
+            "DGR upload failed:\n\n" +
+            error.message
+        );
+    }
 }
 
 
 /* =========================================================
-   RESET DASHBOARD
+   RANGE BUTTONS
 ========================================================= */
 
-function resetDashboard() {
+function setRange(range) {
 
-    destroyCharts();
+    document
+        .querySelectorAll(
+            ".range-buttons button"
+        )
+        .forEach(
+            button => {
+
+                button.classList.toggle(
+                    "selected",
+                    button.dataset.range ===
+                    String(range)
+                );
+            }
+        );
+
+
+    if ($("fromDate")) {
+        $("fromDate").value = "";
+    }
+
+    if ($("toDate")) {
+        $("toDate").value = "";
+    }
+
+
+    if (!dailyRows.length) return;
+
+
+    let filtered;
+
+    if (range === "all") {
+
+        filtered =
+            dailyRows;
+
+    } else {
+
+        const count =
+            Number(range);
+
+        filtered =
+            dailyRows.slice(
+                -count
+            );
+    }
+
+
+    renderKPIs(
+        filtered
+    );
+
+    renderDailyCharts(
+        filtered
+    );
+}
+
+
+/* =========================================================
+   DATE FILTER BUTTONS
+========================================================= */
+
+function applyDateFilter() {
+
+    document
+        .querySelectorAll(
+            ".range-buttons button"
+        )
+        .forEach(
+            button =>
+                button.classList.remove(
+                    "selected"
+                )
+        );
+
+    renderAll();
+}
+
+
+function resetDateFilter() {
+
+    if ($("fromDate")) {
+        $("fromDate").value = "";
+    }
+
+    if ($("toDate")) {
+        $("toDate").value = "";
+    }
+
+    setRange("all");
+}
+
+
+/* =========================================================
+   REMOVE FILE
+========================================================= */
+
+function removeFile() {
 
     workbook = null;
-    currentFile = null;
+
+    dailyRows = [];
+
+    paRows = [];
+
+    curtailmentRows = [];
+
+    annualRows = [];
 
 
-    if (dgrFile) {
-        dgrFile.value = "";
+    Object.keys(charts)
+        .forEach(
+            id =>
+                destroyChart(id)
+        );
+
+
+    $("fileInfo")?.classList.add(
+        "hidden"
+    );
+
+    $("workbookStatus")?.classList.add(
+        "hidden"
+    );
+
+    $("dropZone")?.classList.remove(
+        "hidden"
+    );
+
+    $("emptyState")?.classList.remove(
+        "hidden"
+    );
+
+
+    if ($("sidebarFileName")) {
+
+        $("sidebarFileName").textContent =
+            "No DGR uploaded";
     }
 
 
-    /*
-       Reset file UI
-    */
+    if ($("statusText")) {
 
-    hide("fileInfo");
-    hide("workbookStatus");
-    show("emptyState");
+        $("statusText").textContent =
+            "Upload a DGR to generate the analytics.";
+    }
 
 
-    /*
-       Reset analytics
-    */
-
-    hideAnalyticsSections();
-
-
-    /*
-       Reset texts
-    */
-
-    setText(
-        "fileName",
-        "—"
-    );
-
-    setText(
-        "fileSheets",
-        "—"
-    );
-
-    setText(
-        "sidebarFileName",
-        "No DGR uploaded"
-    );
-
-    setText(
-        "statusText",
-        "Upload a DGR to generate the analytics."
-    );
-
-
-    setText(
+    [
         "dashboardPA",
-        "—"
-    );
-
-    setText(
         "dashboardPR",
-        "—"
-    );
-
-    setText(
         "dashboardLoss",
-        "—"
-    );
-
-    setText(
         "dashboardHours",
-        "—"
-    );
-
-
-    setText(
         "totalBudget",
-        "—"
-    );
-
-    setText(
         "totalMeasured",
-        "—"
-    );
+        "energyVariance"
+    ]
+        .forEach(
+            id => {
 
-    setText(
-        "energyVariance",
-        "—"
-    );
-
-
-    setText(
-        "curtailmentSummary",
-        "Waiting for DGR data"
-    );
+                if ($(id)) {
+                    $(id).textContent =
+                        "—";
+                }
+            }
+        );
 
 
-    if (sheetBadges) {
-        sheetBadges.innerHTML = "";
+    const input =
+        $("dgrFile");
+
+    if (input) {
+        input.value = "";
     }
-
 }
 
 
 /* =========================================================
-   GLOBAL ERROR HANDLING
+   SIDEBAR NAVIGATION
 ========================================================= */
 
-window.addEventListener(
-    "error",
-    (event) => {
+function setupNavigation() {
 
-        console.error(
-            "Application error:",
-            event.error || event.message
+    document
+        .querySelectorAll(
+            ".nav-item"
+        )
+        .forEach(
+            button => {
+
+                button.addEventListener(
+                    "click",
+                    () => {
+
+                        document
+                            .querySelectorAll(
+                                ".nav-item"
+                            )
+                            .forEach(
+                                item =>
+                                    item.classList.remove(
+                                        "active"
+                                    )
+                            );
+
+                        button.classList.add(
+                            "active"
+                        );
+
+
+                        const target =
+                            $(button.dataset.target);
+
+                        if (target) {
+
+                            target.scrollIntoView(
+                                {
+                                    behavior: "smooth",
+                                    block: "start"
+                                }
+                            );
+                        }
+
+                    }
+                );
+
+            }
         );
+}
 
+
+/* =========================================================
+   UPLOAD / DRAG & DROP
+========================================================= */
+
+function setupUpload() {
+
+    const input =
+        $("dgrFile");
+
+    const dropZone =
+        $("dropZone");
+
+
+    if (input) {
+
+        input.addEventListener(
+            "change",
+            event => {
+
+                const file =
+                    event.target.files?.[0];
+
+                handleFile(file);
+            }
+        );
     }
-);
 
 
-window.addEventListener(
-    "unhandledrejection",
-    (event) => {
+    if (!dropZone) return;
 
-        console.error(
-            "Unhandled promise rejection:",
-            event.reason
+
+    dropZone.addEventListener(
+        "click",
+        () => {
+
+            if (input) {
+                input.click();
+            }
+        }
+    );
+
+
+    [
+        "dragenter",
+        "dragover"
+    ]
+        .forEach(
+            eventName => {
+
+                dropZone.addEventListener(
+                    eventName,
+                    event => {
+
+                        event.preventDefault();
+
+                        dropZone.classList.add(
+                            "dragging"
+                        );
+                    }
+                );
+            }
         );
 
+
+    [
+        "dragleave",
+        "drop"
+    ]
+        .forEach(
+            eventName => {
+
+                dropZone.addEventListener(
+                    eventName,
+                    event => {
+
+                        event.preventDefault();
+
+                        dropZone.classList.remove(
+                            "dragging"
+                        );
+                    }
+                );
+            }
+        );
+
+
+    dropZone.addEventListener(
+        "drop",
+        event => {
+
+            const file =
+                event.dataTransfer
+                    ?.files?.[0];
+
+            handleFile(file);
+        }
+    );
+}
+
+
+/* =========================================================
+   INITIALISE
+========================================================= */
+
+document.addEventListener(
+    "DOMContentLoaded",
+    () => {
+
+        setupNavigation();
+
+        setupUpload();
+
+
+        /* Remove button */
+
+        $("removeFile")
+            ?.addEventListener(
+                "click",
+                removeFile
+            );
+
+
+        /* Date buttons */
+
+        $("applyDate")
+            ?.addEventListener(
+                "click",
+                applyDateFilter
+            );
+
+        $("resetDate")
+            ?.addEventListener(
+                "click",
+                resetDateFilter
+            );
+
+
+        /* Range buttons */
+
+        document
+            .querySelectorAll(
+                ".range-buttons button"
+            )
+            .forEach(
+                button => {
+
+                    button.addEventListener(
+                        "click",
+                        () =>
+                            setRange(
+                                button.dataset.range
+                            )
+                    );
+                }
+            );
+
+
+        console.log(
+            "Solar DGR Analytics initialised."
+        );
     }
 );
