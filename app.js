@@ -1656,6 +1656,10 @@ function renderDailyKPICharts(
    GENERIC LINE CHART
 ========================================================= */
 
+/* =========================================================
+   SCROLLABLE LINE CHART
+========================================================= */
+
 function makeLineChart(
     canvasId,
     labels,
@@ -1667,7 +1671,6 @@ function makeLineChart(
     const canvas =
         $(canvasId);
 
-
     if (!canvas) {
         return;
     }
@@ -1678,14 +1681,113 @@ function makeLineChart(
     );
 
 
+    /*
+       Find the normal chart container.
+    */
+
+    const originalParent =
+        canvas.parentElement;
+
+
+    if (!originalParent) {
+        return;
+    }
+
+
+    /*
+       Create a horizontal scrolling wrapper.
+    */
+
+    let scrollWrapper =
+        originalParent.querySelector(
+            ".scroll-chart-container"
+        );
+
+
+    if (!scrollWrapper) {
+
+        scrollWrapper =
+            document.createElement(
+                "div"
+            );
+
+        scrollWrapper.className =
+            "scroll-chart-container";
+
+
+        originalParent.insertBefore(
+            scrollWrapper,
+            canvas
+        );
+
+
+        scrollWrapper.appendChild(
+            canvas
+        );
+
+    }
+
+
+    canvas.classList.add(
+        "scroll-chart-canvas"
+    );
+
+
+    /*
+       Number of data points determines
+       the internal chart width.
+
+       The visible card stays exactly
+       the same width.
+    */
+
+    const pointWidth =
+        58;
+
+
+    const minimumWidth =
+        originalParent.clientWidth ||
+        500;
+
+
+    const calculatedWidth =
+        Math.max(
+            minimumWidth,
+            labels.length *
+            pointWidth
+        );
+
+
+    canvas.style.width =
+        `${calculatedWidth}px`;
+
+    canvas.style.height =
+        "100%";
+
+
+    /*
+       Important:
+       reset previous inline height.
+    */
+
+    canvas.height =
+        originalParent.clientHeight ||
+        280;
+
+
+    const ctx =
+        canvas.getContext(
+            "2d"
+        );
+
+
     charts[canvasId] =
         new Chart(
-            canvas.getContext(
-                "2d"
-            ),
+            ctx,
             {
 
-                type: "line",
+                type:
+                    "line",
 
                 data: {
 
@@ -1726,7 +1828,7 @@ function makeLineChart(
                 options: {
 
                     responsive:
-                        true,
+                        false,
 
                     maintainAspectRatio:
                         false,
@@ -1760,7 +1862,10 @@ function makeLineChart(
 
                                 label:
                                     context =>
-                                        `${datasetLabel}: ${formatNumber(context.raw, 2)}`
+                                        `${datasetLabel}: ${formatNumber(
+                                            context.raw,
+                                            2
+                                        )}`
 
                             }
 
@@ -1786,7 +1891,10 @@ function makeLineChart(
                                     true,
 
                                 maxTicksLimit:
-                                    12,
+                                    Math.min(
+                                        12,
+                                        labels.length
+                                    ),
 
                                 maxRotation:
                                     0,
@@ -1811,20 +1919,10 @@ function makeLineChart(
 
                             },
 
-                            beginAtZero:
-                                false,
-
                             ticks: {
 
                                 maxTicksLimit:
-                                    7,
-
-                                callback:
-                                    value =>
-                                        formatNumber(
-                                            value,
-                                            1
-                                        )
+                                    7
 
                             }
 
@@ -1838,8 +1936,6 @@ function makeLineChart(
         );
 
 }
-
-
 /* =========================================================
    READ PLANT UNAVAILABILITY
 ========================================================= */
