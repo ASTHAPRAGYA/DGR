@@ -1032,3 +1032,58 @@ footer {
     }
 
 }
+/* =========================================================
+   HORIZONTAL SCROLLABLE CHARTS
+========================================================= */
+
+.scroll-chart-container {
+    width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    position: relative;
+    scrollbar-width: thin;
+    scrollbar-color: #b9cacc transparent;
+}
+
+.scroll-chart-container::-webkit-scrollbar {
+    height: 7px;
+}
+
+.scroll-chart-container::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.scroll-chart-container::-webkit-scrollbar-thumb {
+    background: #b9cacc;
+    border-radius: 10px;
+}
+
+.scroll-chart-container::-webkit-scrollbar-thumb:hover {
+    background: #27a5ad;
+}
+
+
+/*
+   The chart canvas becomes wider than the visible
+   card when there are many dates.
+
+   The user slides horizontally instead of the
+   card expanding.
+*/
+
+.scroll-chart-canvas {
+    display: block !important;
+    max-width: none !important;
+    width: auto !important;
+}
+
+
+/*
+   Keep the existing card dimensions.
+*/
+
+.chart-container,
+.large-chart-container,
+.timeline-wrapper {
+    overflow: hidden;
+}
