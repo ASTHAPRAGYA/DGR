@@ -2,7 +2,7 @@
    SOLAR DGR ANALYTICS
    app.js
 
-   ONLY USES:
+   ANALYSED WORKSHEETS ONLY:
 
    Dashboard
    Annual_KPI
@@ -18,11 +18,8 @@
 ========================================================= */
 
 let workbook = null;
-
 let sheetData = {};
-
 let charts = {};
-
 let uploadedFile = null;
 
 
@@ -78,18 +75,24 @@ const emptyState =
 
 
 /* =========================================================
-   INITIAL STATE
+   INITIALISE
 ========================================================= */
 
 hideAnalytics();
-
-
-// Navigation still remains visible.
 setupNavigation();
-
-
-// File upload.
 setupFileUpload();
+
+
+/* =========================================================
+   CHART DEFAULTS
+========================================================= */
+
+Chart.defaults.font.family =
+    "Inter, Arial, sans-serif";
+
+Chart.defaults.font.size = 10;
+
+Chart.defaults.color = "#728286";
 
 
 /* =========================================================
@@ -101,48 +104,32 @@ function setupNavigation() {
     const navItems =
         document.querySelectorAll(".nav-item");
 
-
     navItems.forEach(button => {
 
-        button.addEventListener(
-            "click",
-            () => {
+        button.addEventListener("click", () => {
 
-                navItems.forEach(item => {
+            navItems.forEach(item => {
+                item.classList.remove("active");
+            });
 
-                    item.classList.remove(
-                        "active"
-                    );
+            button.classList.add("active");
 
+            const targetId =
+                button.dataset.target;
+
+            const target =
+                document.getElementById(targetId);
+
+            if (target) {
+
+                target.scrollIntoView({
+                    behavior: "smooth",
+                    block: "start"
                 });
 
-
-                button.classList.add(
-                    "active"
-                );
-
-
-                const targetId =
-                    button.dataset.target;
-
-
-                const target =
-                    document.getElementById(
-                        targetId
-                    );
-
-
-                if (target) {
-
-                    target.scrollIntoView({
-                        behavior: "smooth",
-                        block: "start"
-                    });
-
-                }
-
             }
-        );
+
+        });
 
     });
 
@@ -155,6 +142,10 @@ function setupNavigation() {
 
 function setupFileUpload() {
 
+    if (!fileInput || !dropZone) {
+        return;
+    }
+
 
     fileInput.addEventListener(
         "change",
@@ -164,9 +155,7 @@ function setupFileUpload() {
                 event.target.files[0];
 
             if (file) {
-
                 processFile(file);
-
             }
 
         }
@@ -219,15 +208,12 @@ function setupFileUpload() {
                 "dragging"
             );
 
-
             const file =
                 event.dataTransfer.files[0];
-
 
             if (!file) {
                 return;
             }
-
 
             const extension =
                 file.name
@@ -235,11 +221,9 @@ function setupFileUpload() {
                     .pop()
                     .toLowerCase();
 
-
             if (
-                extension !== "xlsx" &&
-                extension !== "xls" &&
-                extension !== "csv"
+                !["xlsx", "xls", "csv"]
+                    .includes(extension)
             ) {
 
                 alert(
@@ -250,17 +234,20 @@ function setupFileUpload() {
 
             }
 
-
             processFile(file);
 
         }
     );
 
 
-    removeFile.addEventListener(
-        "click",
-        resetDashboard
-    );
+    if (removeFile) {
+
+        removeFile.addEventListener(
+            "click",
+            resetDashboard
+        );
+
+    }
 
 }
 
@@ -273,7 +260,6 @@ function processFile(file) {
 
     uploadedFile = file;
 
-
     statusText.textContent =
         "Reading DGR workbook...";
 
@@ -284,7 +270,6 @@ function processFile(file) {
 
     reader.onload =
         function(event) {
-
 
             try {
 
@@ -310,18 +295,18 @@ function processFile(file) {
 
                 buildDashboard();
 
-
             }
 
             catch (error) {
 
-                console.error(error);
-
-
-                alert(
-                    "Unable to read this DGR. Please check that it is a valid Excel workbook."
+                console.error(
+                    "DGR ERROR:",
+                    error
                 );
 
+                alert(
+                    "Unable to read this DGR. Please check the Excel file."
+                );
 
                 statusText.textContent =
                     "Error reading DGR.";
@@ -337,7 +322,7 @@ function processFile(file) {
 
 
 /* =========================================================
-   READ ONLY REQUIRED SHEETS
+   READ REQUIRED SHEETS
 ========================================================= */
 
 function readRequiredSheets() {
@@ -354,7 +339,8 @@ function readRequiredSheets() {
 
             if (!actualSheetName) {
 
-                sheetData[sheetName] = null;
+                sheetData[sheetName] =
+                    null;
 
                 return;
 
@@ -384,8 +370,7 @@ function readRequiredSheets() {
 
 
 /* =========================================================
-   FIND SHEET NAME
-   Handles small naming differences.
+   FIND SHEET
 ========================================================= */
 
 function findSheetName(requiredName) {
@@ -401,20 +386,16 @@ function findSheetName(requiredName) {
     }
 
 
-    const normalizedRequired =
+    const normalized =
         normalizeText(
             requiredName
         );
 
 
     return workbook.SheetNames.find(
-        sheetName => {
-
-            return normalizeText(
-                sheetName
-            ) === normalizedRequired;
-
-        }
+        name =>
+            normalizeText(name) ===
+            normalized
     ) || null;
 
 }
@@ -443,73 +424,97 @@ function normalizeText(value) {
 
 function updateFileInformation() {
 
-    fileName.textContent =
-        uploadedFile.name;
+    if (fileName) {
+
+        fileName.textContent =
+            uploadedFile.name;
+
+    }
 
 
-    fileSheets.textContent =
-        workbook.SheetNames.length +
-        " worksheets detected";
+    if (fileSheets) {
+
+        fileSheets.textContent =
+            workbook.SheetNames.length +
+            " worksheets detected";
+
+    }
 
 
-    sidebarFileName.textContent =
-        uploadedFile.name;
+    if (sidebarFileName) {
+
+        sidebarFileName.textContent =
+            uploadedFile.name;
+
+    }
 
 
-    fileInfo.classList.remove(
-        "hidden"
-    );
+    if (fileInfo) {
+
+        fileInfo.classList.remove(
+            "hidden"
+        );
+
+    }
 
 
-    workbookStatus.classList.remove(
-        "hidden"
-    );
+    if (workbookStatus) {
+
+        workbookStatus.classList.remove(
+            "hidden"
+        );
+
+    }
 
 
-    sheetBadges.innerHTML = "";
+    if (sheetBadges) {
+
+        sheetBadges.innerHTML = "";
 
 
-    REQUIRED_SHEETS.forEach(
-        sheetName => {
+        REQUIRED_SHEETS.forEach(
+            sheetName => {
 
-            const badge =
-                document.createElement(
-                    "span"
+                const badge =
+                    document.createElement(
+                        "span"
+                    );
+
+
+                badge.className =
+                    "sheet-badge";
+
+
+                if (
+                    sheetData[sheetName]
+                ) {
+
+                    badge.textContent =
+                        sheetName;
+
+                }
+
+                else {
+
+                    badge.textContent =
+                        sheetName +
+                        " — not found";
+
+                    badge.classList.add(
+                        "missing"
+                    );
+
+                }
+
+
+                sheetBadges.appendChild(
+                    badge
                 );
 
-
-            badge.className =
-                "sheet-badge";
-
-
-            if (
-                sheetData[sheetName]
-            ) {
-
-                badge.textContent =
-                    sheetName;
-
             }
+        );
 
-            else {
-
-                badge.textContent =
-                    sheetName +
-                    " — not found";
-
-                badge.classList.add(
-                    "missing"
-                );
-
-            }
-
-
-            sheetBadges.appendChild(
-                badge
-            );
-
-        }
-    );
+    }
 
 }
 
@@ -543,7 +548,6 @@ function buildDashboard() {
     buildCurtailmentChart();
 
     buildEnergyChart();
-
 
     updateKPIs();
 
@@ -587,7 +591,7 @@ function showAnalytics() {
 
 
 /* =========================================================
-   GENERIC CHART DESTROY
+   DESTROY CHART
 ========================================================= */
 
 function destroyChart(name) {
@@ -604,240 +608,7 @@ function destroyChart(name) {
 
 
 /* =========================================================
-   CHART DEFAULTS
-========================================================= */
-
-Chart.defaults.font.family =
-    "Inter, Arial, sans-serif";
-
-
-Chart.defaults.font.size = 9;
-
-
-Chart.defaults.color =
-    "#728286";
-
-
-/* =========================================================
-   GET DAILY KPI ROWS
-=========================================================
-
-   Excel columns:
-
-   I  = 9th column
-   V  = 22nd column
-   AD = 30th column
-
-   JavaScript index:
-
-   I  -> 8
-   V  -> 21
-   AD -> 29
-
-========================================================= */
-
-function getDailyKPIData() {
-
-    const rows =
-        sheetData["Daily_KPI"];
-
-
-    if (
-        !rows ||
-        rows.length === 0
-    ) {
-
-        return [];
-
-    }
-
-
-    const result = [];
-
-
-    for (
-        let i = 0;
-        i < rows.length;
-        i++
-    ) {
-
-        const row =
-            rows[i];
-
-
-        if (
-            !row ||
-            row.length === 0
-        ) {
-
-            continue;
-
-        }
-
-
-        const operatingHours =
-            parseNumber(
-                row[8]
-            );
-
-
-        const pr =
-            parseNumber(
-                row[21]
-            );
-
-
-        const systemLoss =
-            parseNumber(
-                row[29]
-            );
-
-
-        const date =
-            findDateInRow(
-                row,
-                i
-            );
-
-
-        if (
-            operatingHours === null &&
-            pr === null &&
-            systemLoss === null
-        ) {
-
-            continue;
-
-        }
-
-
-        result.push({
-
-            index:
-                result.length + 1,
-
-            date,
-
-            operatingHours,
-
-            pr,
-
-            systemLoss
-
-        });
-
-    }
-
-
-    return result;
-
-}
-
-
-/* =========================================================
-   FIND DATE IN ROW
-========================================================= */
-
-function findDateInRow(row, index) {
-
-    for (
-        let i = 0;
-        i < Math.min(
-            row.length,
-            8
-        );
-        i++
-    ) {
-
-        const value =
-            row[i];
-
-
-        if (
-            value instanceof Date &&
-            !isNaN(value)
-        ) {
-
-            return value;
-
-        }
-
-
-        if (
-            typeof value === "number" &&
-            value > 20000 &&
-            value < 60000
-        ) {
-
-            const date =
-                XLSX.SSF.parse_date_code(
-                    value
-                );
-
-
-            if (date) {
-
-                return new Date(
-                    date.y,
-                    date.m - 1,
-                    date.d
-                );
-
-            }
-
-        }
-
-
-        if (
-            typeof value === "string" &&
-            looksLikeDate(value)
-        ) {
-
-            const parsed =
-                new Date(value);
-
-
-            if (
-                !isNaN(parsed)
-            ) {
-
-                return parsed;
-
-            }
-
-        }
-
-    }
-
-
-    return index + 1;
-
-}
-
-
-/* =========================================================
-   DATE CHECK
-========================================================= */
-
-function looksLikeDate(value) {
-
-    const text =
-        String(value).trim();
-
-
-    return (
-        /^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}$/
-            .test(text)
-        ||
-        /^\d{1,2}[\/\-]\w{3,9}[\/\-]\d{2,4}$/
-            .test(text)
-    );
-
-}
-
-
-/* =========================================================
-   PARSE NUMBER
+   NUMBER PARSER
 ========================================================= */
 
 function parseNumber(value) {
@@ -866,21 +637,12 @@ function parseNumber(value) {
     let text =
         String(value)
             .trim()
-            .replace(
-                /,/g,
-                ""
-            );
+            .replace(/,/g, "");
 
 
     if (!text) {
-
         return null;
-
     }
-
-
-    const percent =
-        text.includes("%");
 
 
     text =
@@ -891,9 +653,7 @@ function parseNumber(value) {
 
 
     if (!text) {
-
         return null;
-
     }
 
 
@@ -901,49 +661,365 @@ function parseNumber(value) {
         Number(text);
 
 
-    if (
-        !Number.isFinite(number)
-    ) {
-
-        return null;
-
-    }
-
-
-    return number;
+    return Number.isFinite(number)
+        ? number
+        : null;
 
 }
 
 
 /* =========================================================
-   FORMAT DATE
+   DATE CONVERSION
 ========================================================= */
 
-function formatDate(value) {
+function convertExcelDate(value) {
 
     if (
         value instanceof Date &&
         !isNaN(value)
     ) {
 
-        return value.toLocaleDateString(
-            "en-IN",
-            {
-                day: "2-digit",
-                month: "short"
-            }
-        );
+        return value;
 
     }
 
 
-    return String(value);
+    if (
+        typeof value === "number" &&
+        value > 20000 &&
+        value < 60000
+    ) {
+
+        const parsed =
+            XLSX.SSF.parse_date_code(
+                value
+            );
+
+
+        if (parsed) {
+
+            return new Date(
+                parsed.y,
+                parsed.m - 1,
+                parsed.d,
+                parsed.H || 0,
+                parsed.M || 0,
+                parsed.S || 0
+            );
+
+        }
+
+    }
+
+
+    if (
+        typeof value === "string"
+    ) {
+
+        const parsed =
+            new Date(value);
+
+
+        if (!isNaN(parsed)) {
+            return parsed;
+        }
+
+    }
+
+
+    return null;
 
 }
 
 
 /* =========================================================
-   BUILD PR SCATTER CHART
+   COMBINE EXCEL DATE + TIME
+========================================================= */
+
+function combineDateTime(
+    dateValue,
+    timeValue
+) {
+
+    const date =
+        convertExcelDate(
+            dateValue
+        );
+
+
+    if (!date) {
+        return null;
+    }
+
+
+    /*
+       Excel may return time as
+       a JavaScript Date, a number,
+       or a string.
+    */
+
+    let hours = 0;
+    let minutes = 0;
+    let seconds = 0;
+
+
+    if (
+        timeValue instanceof Date
+    ) {
+
+        hours =
+            timeValue.getHours();
+
+        minutes =
+            timeValue.getMinutes();
+
+        seconds =
+            timeValue.getSeconds();
+
+    }
+
+    else if (
+        typeof timeValue === "number"
+    ) {
+
+        /*
+           Excel time fraction.
+        */
+
+        const totalSeconds =
+            Math.round(
+                timeValue * 86400
+            );
+
+        hours =
+            Math.floor(
+                totalSeconds / 3600
+            );
+
+        minutes =
+            Math.floor(
+                (
+                    totalSeconds % 3600
+                ) / 60
+            );
+
+        seconds =
+            totalSeconds % 60;
+
+    }
+
+    else if (
+        typeof timeValue === "string"
+    ) {
+
+        const match =
+            timeValue.match(
+                /(\d{1,2}):(\d{2})(?::(\d{2}))?/
+            );
+
+
+        if (match) {
+
+            hours =
+                Number(match[1]);
+
+            minutes =
+                Number(match[2]);
+
+            seconds =
+                Number(match[3] || 0);
+
+        }
+
+    }
+
+
+    return new Date(
+        date.getFullYear(),
+        date.getMonth(),
+        date.getDate(),
+        hours,
+        minutes,
+        seconds
+    );
+
+}
+
+
+/* =========================================================
+   DATE FORMAT
+========================================================= */
+
+function formatDate(value) {
+
+    if (
+        !(value instanceof Date) ||
+        isNaN(value)
+    ) {
+
+        return String(value ?? "");
+
+    }
+
+
+    return value.toLocaleDateString(
+        "en-IN",
+        {
+            day: "2-digit",
+            month: "short",
+            year: "numeric"
+        }
+    );
+
+}
+
+
+/* =========================================================
+   DATETIME FORMAT
+========================================================= */
+
+function formatDateTime(value) {
+
+    if (
+        !(value instanceof Date) ||
+        isNaN(value)
+    ) {
+
+        return "—";
+
+    }
+
+
+    return value.toLocaleString(
+        "en-IN",
+        {
+            day: "2-digit",
+            month: "short",
+            hour: "2-digit",
+            minute: "2-digit"
+        }
+    );
+
+}
+
+
+/* =========================================================
+   DAILY KPI DATA
+
+   ACTUAL DGR:
+
+   B = Date
+   I = Operating Hours
+   V = PR
+   AD = System Loss
+
+========================================================= */
+
+function getDailyKPIData() {
+
+    const rows =
+        sheetData["Daily_KPI"];
+
+
+    if (
+        !rows ||
+        rows.length < 5
+    ) {
+
+        return [];
+
+    }
+
+
+    const result = [];
+
+
+    /*
+       Actual DGR header is row 4.
+       Excel row 4 = JS index 3.
+       Data begins row 5.
+    */
+
+    for (
+        let r = 4;
+        r < rows.length;
+        r++
+    ) {
+
+        const row =
+            rows[r];
+
+
+        if (!row) {
+            continue;
+        }
+
+
+        const date =
+            convertExcelDate(
+                row[1]
+            );
+
+
+        const operatingHours =
+            parseNumber(
+                row[8]
+            );
+
+
+        const pr =
+            parseNumber(
+                row[21]
+            );
+
+
+        const systemLoss =
+            parseNumber(
+                row[29]
+            );
+
+
+        /*
+           A row is useful if it has
+           a date and at least one metric.
+        */
+
+        if (
+            !date ||
+            (
+                operatingHours === null &&
+                pr === null &&
+                systemLoss === null
+            )
+        ) {
+
+            continue;
+
+        }
+
+
+        result.push({
+
+            date,
+
+            operatingHours,
+
+            pr,
+
+            systemLoss
+
+        });
+
+    }
+
+
+    return result;
+
+}
+
+
+/* =========================================================
+   PR CHART
    Daily_KPI Column V
 ========================================================= */
 
@@ -995,10 +1071,10 @@ function buildPRChart() {
                                     item => ({
 
                                         x:
-                                            item.index,
+                                            item.date.getTime(),
 
                                         y:
-                                            item.pr
+                                            item.pr * 100
 
                                     })
                                 ),
@@ -1037,6 +1113,7 @@ function buildPRChart() {
 
                     },
 
+
                     plugins: {
 
                         legend: {
@@ -1045,15 +1122,45 @@ function buildPRChart() {
 
                         },
 
+
                         tooltip: {
 
                             callbacks: {
 
                                 title:
-                                    tooltipPRTitle,
+                                    context => {
+
+                                        if (
+                                            !context.length
+                                        ) {
+                                            return "";
+                                        }
+
+                                        const date =
+                                            new Date(
+                                                context[0]
+                                                    .parsed
+                                                    .x
+                                            );
+
+                                        return formatDate(
+                                            date
+                                        );
+
+                                    },
+
 
                                 label:
-                                    tooltipPRLabel
+                                    context => {
+
+                                        return (
+                                            "PR: " +
+                                            context.parsed.y
+                                                .toFixed(2) +
+                                            "%"
+                                        );
+
+                                    }
 
                             }
 
@@ -1066,25 +1173,26 @@ function buildPRChart() {
 
                         x: {
 
+                            type: "linear",
+
                             title: {
 
                                 display: true,
 
                                 text:
-                                    "Day of Month"
+                                    "Date"
 
                             },
 
                             ticks: {
 
-                                stepSize: 1
-
-                            },
-
-                            grid: {
-
-                                color:
-                                    "#edf2f3"
+                                callback:
+                                    value =>
+                                        formatDate(
+                                            new Date(
+                                                value
+                                            )
+                                        )
 
                             }
 
@@ -1098,16 +1206,11 @@ function buildPRChart() {
                                 display: true,
 
                                 text:
-                                    "PR (%)"
+                                    "Performance Ratio (%)"
 
                             },
 
-                            grid: {
-
-                                color:
-                                    "#edf2f3"
-
-                            }
+                            beginAtZero: true
 
                         }
 
@@ -1121,65 +1224,6 @@ function buildPRChart() {
 
     buildDashboardPRChart(
         valid
-    );
-
-}
-
-
-/* =========================================================
-   PR TOOLTIP
-========================================================= */
-
-function tooltipPRTitle(items) {
-
-    if (
-        !items ||
-        !items.length
-    ) {
-
-        return "";
-
-    }
-
-
-    const index =
-        items[0].parsed.x - 1;
-
-
-    const data =
-        getDailyKPIData();
-
-
-    const item =
-        data[index];
-
-
-    if (!item) {
-
-        return "Day " +
-            items[0].parsed.x;
-
-    }
-
-
-    return (
-        "Day " +
-        items[0].parsed.x +
-        " — " +
-        formatDate(item.date)
-    );
-
-}
-
-
-function tooltipPRLabel(context) {
-
-    return (
-        "PR: " +
-        Number(
-            context.parsed.y
-        ).toFixed(2) +
-        "%"
     );
 
 }
@@ -1220,18 +1264,17 @@ function buildDashboardPRChart(data) {
 
                         {
 
-                            label:
-                                "PR",
+                            label: "PR",
 
                             data:
                                 data.map(
                                     item => ({
 
                                         x:
-                                            item.index,
+                                            item.date.getTime(),
 
                                         y:
-                                            item.pr
+                                            item.pr * 100
 
                                     })
                                 ),
@@ -1274,16 +1317,31 @@ function buildDashboardPRChart(data) {
 
                         x: {
 
+                            type: "linear",
+
                             title: {
 
                                 display: true,
 
                                 text:
-                                    "Day"
+                                    "Date"
+
+                            },
+
+                            ticks: {
+
+                                callback:
+                                    value =>
+                                        formatDate(
+                                            new Date(
+                                                value
+                                            )
+                                        )
 
                             }
 
                         },
+
 
                         y: {
 
@@ -1294,7 +1352,9 @@ function buildDashboardPRChart(data) {
                                 text:
                                     "PR (%)"
 
-                            }
+                            },
+
+                            beginAtZero: true
 
                         }
 
@@ -1303,6 +1363,7 @@ function buildDashboardPRChart(data) {
                 }
 
             }
+
         );
 
 }
@@ -1349,12 +1410,6 @@ function buildOperatingHoursChart() {
 
                 data: {
 
-                    labels:
-                        valid.map(
-                            item =>
-                                item.index
-                        ),
-
                     datasets: [
 
                         {
@@ -1364,8 +1419,15 @@ function buildOperatingHoursChart() {
 
                             data:
                                 valid.map(
-                                    item =>
-                                        item.operatingHours
+                                    item => ({
+
+                                        x:
+                                            item.date.getTime(),
+
+                                        y:
+                                            item.operatingHours
+
+                                    })
                                 ),
 
                             borderColor:
@@ -1400,17 +1462,47 @@ function buildOperatingHoursChart() {
 
                     interaction: {
 
-                        mode: "index",
+                        mode: "nearest",
 
                         intersect: false
 
                     },
+
 
                     plugins: {
 
                         legend: {
 
                             display: false
+
+                        },
+
+
+                        tooltip: {
+
+                            callbacks: {
+
+                                title:
+                                    context => {
+
+                                        return formatDate(
+                                            new Date(
+                                                context[0]
+                                                    .parsed
+                                                    .x
+                                            )
+                                        );
+
+                                    },
+
+                                label:
+                                    context =>
+                                        "Operating Hours: " +
+                                        context.parsed.y
+                                            .toFixed(2) +
+                                        " h"
+
+                            }
 
                         }
 
@@ -1421,16 +1513,31 @@ function buildOperatingHoursChart() {
 
                         x: {
 
+                            type: "linear",
+
                             title: {
 
                                 display: true,
 
                                 text:
-                                    "Day of Month"
+                                    "Date"
+
+                            },
+
+                            ticks: {
+
+                                callback:
+                                    value =>
+                                        formatDate(
+                                            new Date(
+                                                value
+                                            )
+                                        )
 
                             }
 
                         },
+
 
                         y: {
 
@@ -1458,7 +1565,7 @@ function buildOperatingHoursChart() {
 
 
 /* =========================================================
-   SYSTEM LOSS CHART
+   SYSTEM LOSS
    Daily_KPI Column AD
 ========================================================= */
 
@@ -1498,23 +1605,24 @@ function buildSystemLossChart() {
 
                 data: {
 
-                    labels:
-                        valid.map(
-                            item =>
-                                item.index
-                        ),
-
                     datasets: [
 
                         {
 
                             label:
-                                "System Losses (%)",
+                                "System Losses",
 
                             data:
                                 valid.map(
-                                    item =>
-                                        item.systemLoss
+                                    item => ({
+
+                                        x:
+                                            item.date.getTime(),
+
+                                        y:
+                                            item.systemLoss * 100
+
+                                    })
                                 ),
 
                             borderColor:
@@ -1549,17 +1657,44 @@ function buildSystemLossChart() {
 
                     interaction: {
 
-                        mode: "index",
+                        mode: "nearest",
 
                         intersect: false
 
                     },
+
 
                     plugins: {
 
                         legend: {
 
                             display: false
+
+                        },
+
+
+                        tooltip: {
+
+                            callbacks: {
+
+                                title:
+                                    context =>
+                                        formatDate(
+                                            new Date(
+                                                context[0]
+                                                    .parsed
+                                                    .x
+                                            )
+                                        ),
+
+                                label:
+                                    context =>
+                                        "System Loss: " +
+                                        context.parsed.y
+                                            .toFixed(2) +
+                                        "%"
+
+                            }
 
                         }
 
@@ -1570,16 +1705,31 @@ function buildSystemLossChart() {
 
                         x: {
 
+                            type: "linear",
+
                             title: {
 
                                 display: true,
 
                                 text:
-                                    "Day of Month"
+                                    "Date"
+
+                            },
+
+                            ticks: {
+
+                                callback:
+                                    value =>
+                                        formatDate(
+                                            new Date(
+                                                value
+                                            )
+                                        )
 
                             }
 
                         },
+
 
                         y: {
 
@@ -1590,7 +1740,9 @@ function buildSystemLossChart() {
                                 text:
                                     "System Loss (%)"
 
-                            }
+                            },
+
+                            beginAtZero: true
 
                         }
 
@@ -1640,12 +1792,6 @@ function buildDashboardLossChart(data) {
 
                 data: {
 
-                    labels:
-                        data.map(
-                            item =>
-                                item.index
-                        ),
-
                     datasets: [
 
                         {
@@ -1655,15 +1801,22 @@ function buildDashboardLossChart(data) {
 
                             data:
                                 data.map(
-                                    item =>
-                                        item.systemLoss
+                                    item => ({
+
+                                        x:
+                                            item.date.getTime(),
+
+                                        y:
+                                            item.systemLoss * 100
+
+                                    })
                                 ),
 
                             borderColor:
                                 "#27A5AD",
 
                             backgroundColor:
-                                "rgba(39,165,173,0.1)",
+                                "rgba(39,165,173,0.10)",
 
                             fill: true,
 
@@ -1687,6 +1840,7 @@ function buildDashboardLossChart(data) {
 
                     animation: false,
 
+
                     plugins: {
 
                         legend: {
@@ -1697,20 +1851,36 @@ function buildDashboardLossChart(data) {
 
                     },
 
+
                     scales: {
 
                         x: {
+
+                            type: "linear",
 
                             title: {
 
                                 display: true,
 
                                 text:
-                                    "Day"
+                                    "Date"
+
+                            },
+
+                            ticks: {
+
+                                callback:
+                                    value =>
+                                        formatDate(
+                                            new Date(
+                                                value
+                                            )
+                                        )
 
                             }
 
                         },
+
 
                         y: {
 
@@ -1721,7 +1891,9 @@ function buildDashboardLossChart(data) {
                                 text:
                                     "Loss (%)"
 
-                            }
+                            },
+
+                            beginAtZero: true
 
                         }
 
@@ -1737,6 +1909,17 @@ function buildDashboardLossChart(data) {
 
 /* =========================================================
    CURTAILMENT DATA
+
+   ACTUAL DGR:
+
+   C = Date
+   H = From
+   I = To
+   R = Loss of Generation MWh
+
+   We use R for actual curtailment
+   generation loss.
+
 ========================================================= */
 
 function getCurtailmentData() {
@@ -1749,7 +1932,7 @@ function getCurtailmentData() {
 
     if (
         !rows ||
-        rows.length === 0
+        rows.length < 2
     ) {
 
         return [];
@@ -1757,76 +1940,22 @@ function getCurtailmentData() {
     }
 
 
-    /*
-       We deliberately do not assume a
-       specific column number here.
-
-       The function looks for common
-       curtailment-loss headers.
-    */
-
-
-    const headers =
-        rows[0] || [];
-
-
-    let dateIndex =
-        findColumn(
-            headers,
-            [
-                "date",
-                "day",
-                "timestamp",
-                "time",
-                "start time"
-            ]
-        );
-
-
-    let lossIndex =
-        findColumn(
-            headers,
-            [
-                "curtailment loss",
-                "curtailment losses",
-                "loss",
-                "losses",
-                "curtailed energy",
-                "energy loss",
-                "mwh"
-            ]
-        );
-
-
-    /*
-       If no header match exists,
-       find numeric columns automatically.
-    */
-
-    if (
-        lossIndex === -1
-    ) {
-
-        lossIndex =
-            findLikelyNumericColumn(
-                rows,
-                1
-            );
-
-    }
-
-
     const result = [];
 
 
+    /*
+       Header row = row 1.
+       Data starts row 2.
+    */
+
     for (
-        let i = 1;
-        i < rows.length;
-        i++
+        let r = 1;
+        r < rows.length;
+        r++
     ) {
 
         const row =
-            rows[i];
+            rows[r];
 
 
         if (!row) {
@@ -1834,15 +1963,59 @@ function getCurtailmentData() {
         }
 
 
+        const date =
+            convertExcelDate(
+                row[2]
+            );
+
+
+        const from =
+            combineDateTime(
+                row[2],
+                row[7]
+            );
+
+
+        const to =
+            combineDateTime(
+                row[2],
+                row[8]
+            );
+
+
         const loss =
-            lossIndex >= 0
-                ? parseNumber(
-                    row[lossIndex]
+            parseNumber(
+                row[17]
+            );
+
+
+        const category =
+            String(
+                row[4] ?? ""
+            )
+            .trim();
+
+
+        /*
+           Only LOAD CURTAILMENT
+           records are relevant.
+        */
+
+        if (
+            !category
+                .toLowerCase()
+                .includes(
+                    "curtail"
                 )
-                : null;
+        ) {
+
+            continue;
+
+        }
 
 
         if (
+            !date ||
             loss === null
         ) {
 
@@ -1851,27 +2024,53 @@ function getCurtailmentData() {
         }
 
 
-        let date =
-            dateIndex >= 0
-                ? row[dateIndex]
-                : i;
-
-
-        date =
-            convertExcelDate(
-                date
-            );
-
-
         result.push({
 
             date,
 
-            loss
+            from,
+
+            to,
+
+            loss,
+
+            category,
+
+            setPoint:
+                parseNumber(
+                    row[19]
+                ),
+
+            remark:
+                row[18] ??
+                ""
 
         });
 
     }
+
+
+    /*
+       Sort chronologically.
+    */
+
+    result.sort(
+        (a, b) => {
+
+            const timeA =
+                a.from
+                    ? a.from.getTime()
+                    : a.date.getTime();
+
+            const timeB =
+                b.from
+                    ? b.from.getTime()
+                    : b.date.getTime();
+
+            return timeA - timeB;
+
+        }
+    );
 
 
     return result;
@@ -1914,14 +2113,6 @@ function buildCurtailmentChart() {
 
                 data: {
 
-                    labels:
-                        data.map(
-                            item =>
-                                formatDate(
-                                    item.date
-                                )
-                        ),
-
                     datasets: [
 
                         {
@@ -1931,8 +2122,18 @@ function buildCurtailmentChart() {
 
                             data:
                                 data.map(
-                                    item =>
-                                        item.loss
+                                    item => ({
+
+                                        x:
+                                            (
+                                                item.from ||
+                                                item.date
+                                            ).getTime(),
+
+                                        y:
+                                            item.loss
+
+                                    })
                                 ),
 
                             borderColor:
@@ -1943,11 +2144,11 @@ function buildCurtailmentChart() {
 
                             fill: true,
 
-                            tension: 0.25,
+                            tension: 0.15,
 
-                            pointRadius: 3,
+                            pointRadius: 2,
 
-                            pointHoverRadius: 7
+                            pointHoverRadius: 6
 
                         }
 
@@ -1967,11 +2168,12 @@ function buildCurtailmentChart() {
 
                     interaction: {
 
-                        mode: "index",
+                        mode: "nearest",
 
                         intersect: false
 
                     },
+
 
                     plugins: {
 
@@ -1981,16 +2183,63 @@ function buildCurtailmentChart() {
 
                         },
 
+
                         tooltip: {
 
                             callbacks: {
 
+                                title:
+                                    context => {
+
+                                        const item =
+                                            data[
+                                                context[0]
+                                                    .dataIndex
+                                            ];
+
+                                        return item &&
+                                            item.from
+                                            ? formatDateTime(
+                                                item.from
+                                            )
+                                            : "";
+
+                                    },
+
+
                                 label:
-                                    context =>
-                                        "Curtailment Loss: " +
-                                        Number(
+                                    context => {
+
+                                        const item =
+                                            data[
+                                                context.dataIndex
+                                            ];
+
+                                        return [
+                                            "Loss of Generation: " +
                                             context.parsed.y
-                                        ).toFixed(2)
+                                                .toFixed(2) +
+                                            " MWh",
+
+                                            item?.to
+                                                ? "To: " +
+                                                  formatDateTime(
+                                                      item.to
+                                                  )
+                                                : "",
+
+                                            item?.setPoint !==
+                                                null
+                                                ? "Load Shedding Set Point: " +
+                                                  item.setPoint +
+                                                  " MW"
+                                                : ""
+
+                                        ].filter(
+                                            Boolean
+                                        );
+
+                                    }
 
                             }
 
@@ -2003,16 +2252,31 @@ function buildCurtailmentChart() {
 
                         x: {
 
+                            type: "linear",
+
                             title: {
 
                                 display: true,
 
                                 text:
-                                    "Date"
+                                    "Date / Time"
+
+                            },
+
+                            ticks: {
+
+                                callback:
+                                    value =>
+                                        formatDateTime(
+                                            new Date(
+                                                value
+                                            )
+                                        )
 
                             }
 
                         },
+
 
                         y: {
 
@@ -2021,7 +2285,7 @@ function buildCurtailmentChart() {
                                 display: true,
 
                                 text:
-                                    "Curtailment Loss"
+                                    "Curtailment Loss (MWh)"
 
                             },
 
@@ -2048,25 +2312,40 @@ function buildCurtailmentChart() {
         );
 
 
-    document.getElementById(
-        "curtailmentSummary"
-    ).textContent =
-        data.length +
-        " records · Total loss: " +
-        total.toFixed(2);
+    const summary =
+        document.getElementById(
+            "curtailmentSummary"
+        );
+
+
+    if (summary) {
+
+        summary.textContent =
+            data.length +
+            " curtailment records · Total generation loss: " +
+            total.toFixed(2) +
+            " MWh";
+
+    }
 
 }
 
 
 /* =========================================================
    ENERGY DATA
-   Annual_KPI:
 
-   Budgeted Energy = E10:E21
-   Measured Energy = F10:F21
+   Annual_KPI monthwise section:
 
-   Excel row 10 = JS index 9
-   Excel row 21 = JS index 20
+   Row 10 onward
+
+   E = Budgeted Energy
+   F = Measured Energy (MWh) (Exp)
+
+   Actual workbook values are in MWh.
+
+   We convert both to GWh for the chart
+   so both datasets use the same unit.
+
 ========================================================= */
 
 function getEnergyData() {
@@ -2090,6 +2369,11 @@ function getEnergyData() {
     const result = [];
 
 
+    /*
+       Excel rows 10–21.
+       JavaScript indexes 9–20.
+    */
+
     for (
         let excelRow = 10;
         excelRow <= 21;
@@ -2107,67 +2391,56 @@ function getEnergyData() {
         }
 
 
-        const budget =
+        const monthDate =
+            convertExcelDate(
+                row[0]
+            );
+
+
+        const budgetMWh =
             parseNumber(
                 row[4]
             );
 
 
-        const measured =
+        const measuredMWh =
             parseNumber(
                 row[5]
             );
 
 
         /*
-           Try to obtain month name.
-
-           Usually it will be in one
-           of the first four columns.
+           Skip completely empty
+           future rows.
         */
 
-        let month = null;
-
-
-        for (
-            let c = 0;
-            c < 4;
-            c++
+        if (
+            budgetMWh === null &&
+            measuredMWh === null
         ) {
 
-            const value =
-                row[c];
-
-
-            if (
-                value !== null &&
-                value !== undefined &&
-                value !== ""
-            ) {
-
-                const text =
-                    String(
-                        value
-                    ).trim();
-
-
-                if (
-                    text.length <= 15
-                ) {
-
-                    month =
-                        text;
-
-                    break;
-
-                }
-
-            }
+            continue;
 
         }
 
 
-        if (!month) {
+        let month;
+
+
+        if (monthDate) {
+
+            month =
+                monthDate.toLocaleDateString(
+                    "en-IN",
+                    {
+                        month: "short",
+                        year: "numeric"
+                    }
+                );
+
+        }
+
+        else {
 
             month =
                 "Month " +
@@ -2182,9 +2455,22 @@ function getEnergyData() {
 
             month,
 
-            budget,
+            date:
+                monthDate,
 
-            measured
+            budgetMWh,
+
+            measuredMWh,
+
+            budgetGWh:
+                budgetMWh !== null
+                    ? budgetMWh / 1000
+                    : null,
+
+            measuredGWh:
+                measuredMWh !== null
+                    ? measuredMWh / 1000
+                    : null
 
         });
 
@@ -2247,7 +2533,7 @@ function buildEnergyChart() {
                             data:
                                 data.map(
                                     item =>
-                                        item.budget
+                                        item.budgetGWh
                                 ),
 
                             backgroundColor:
@@ -2256,10 +2542,10 @@ function buildEnergyChart() {
                             borderRadius: 4,
 
                             barPercentage:
-                                0.65,
+                                0.7,
 
                             categoryPercentage:
-                                0.7
+                                0.75
 
                         },
 
@@ -2272,7 +2558,7 @@ function buildEnergyChart() {
                             data:
                                 data.map(
                                     item =>
-                                        item.measured
+                                        item.measuredGWh
                                 ),
 
                             backgroundColor:
@@ -2281,10 +2567,10 @@ function buildEnergyChart() {
                             borderRadius: 4,
 
                             barPercentage:
-                                0.65,
+                                0.7,
 
                             categoryPercentage:
-                                0.7
+                                0.75
 
                         }
 
@@ -2310,22 +2596,33 @@ function buildEnergyChart() {
 
                     },
 
+
                     plugins: {
 
                         legend: {
 
                             position:
-                                "top",
+                                "top"
 
-                            labels: {
+                        },
 
-                                boxWidth: 10,
 
-                                font: {
+                        tooltip: {
 
-                                    size: 9
+                            callbacks: {
 
-                                }
+                                label:
+                                    context => {
+
+                                        return (
+                                            context.dataset.label +
+                                            ": " +
+                                            context.parsed.y
+                                                .toFixed(2) +
+                                            " GWh"
+                                        );
+
+                                    }
 
                             }
 
@@ -2349,12 +2646,12 @@ function buildEnergyChart() {
 
                             grid: {
 
-                                display:
-                                    false
+                                display: false
 
                             }
 
                         },
+
 
                         y: {
 
@@ -2363,7 +2660,7 @@ function buildEnergyChart() {
                                 display: true,
 
                                 text:
-                                    "Energy"
+                                    "Energy (GWh)"
 
                             },
 
@@ -2402,7 +2699,7 @@ function updateEnergySummary(
             ) =>
                 sum +
                 (
-                    item.budget ||
+                    item.budgetGWh ||
                     0
                 ),
             0
@@ -2417,7 +2714,7 @@ function updateEnergySummary(
             ) =>
                 sum +
                 (
-                    item.measured ||
+                    item.measuredGWh ||
                     0
                 ),
             0
@@ -2428,27 +2725,54 @@ function updateEnergySummary(
         measured - budget;
 
 
-    document.getElementById(
-        "totalBudget"
-    ).textContent =
-        budget.toFixed(2);
+    const budgetElement =
+        document.getElementById(
+            "totalBudget"
+        );
 
 
-    document.getElementById(
-        "totalMeasured"
-    ).textContent =
-        measured.toFixed(2);
+    const measuredElement =
+        document.getElementById(
+            "totalMeasured"
+        );
 
 
-    document.getElementById(
-        "energyVariance"
-    ).textContent =
-        (
-            variance >= 0
-                ? "+"
-                : ""
-        ) +
-        variance.toFixed(2);
+    const varianceElement =
+        document.getElementById(
+            "energyVariance"
+        );
+
+
+    if (budgetElement) {
+
+        budgetElement.textContent =
+            budget.toFixed(2) +
+            " GWh";
+
+    }
+
+
+    if (measuredElement) {
+
+        measuredElement.textContent =
+            measured.toFixed(2) +
+            " GWh";
+
+    }
+
+
+    if (varianceElement) {
+
+        varianceElement.textContent =
+            (
+                variance >= 0
+                    ? "+"
+                    : ""
+            ) +
+            variance.toFixed(2) +
+            " GWh";
+
+    }
 
 }
 
@@ -2456,11 +2780,26 @@ function updateEnergySummary(
 /* =========================================================
    PA DATA
 
-   The PA sheet can have different
-   column arrangements.
+   ACTUAL DGR:
 
-   We identify Start / End / Duration
-   by header names.
+   B  = Date
+   Z  = Fault Time
+   AC = Work Completion time on fault
+   AG = Breakdown Time
+   AH = Action taken
+   AK = Approximate Energy Loss
+
+   We construct:
+
+   Breakdown Start =
+   Date + Fault Time
+
+   Breakdown End =
+   Date + Work Completion Time
+
+   Duration =
+   Breakdown Time (AG)
+
 ========================================================= */
 
 function getPAData() {
@@ -2471,7 +2810,7 @@ function getPAData() {
 
     if (
         !rows ||
-        rows.length < 2
+        rows.length < 5
     ) {
 
         return [];
@@ -2479,74 +2818,22 @@ function getPAData() {
     }
 
 
-    const headers =
-        rows[0] || [];
-
-
-    const startIndex =
-        findColumn(
-            headers,
-            [
-                "breakdown start",
-                "start time",
-                "start",
-                "from",
-                "outage start",
-                "failure start"
-            ]
-        );
-
-
-    const endIndex =
-        findColumn(
-            headers,
-            [
-                "breakdown end",
-                "end time",
-                "end",
-                "to",
-                "outage end",
-                "failure end"
-            ]
-        );
-
-
-    const durationIndex =
-        findColumn(
-            headers,
-            [
-                "duration",
-                "breakdown duration",
-                "downtime",
-                "outage duration"
-            ]
-        );
-
-
-    const equipmentIndex =
-        findColumn(
-            headers,
-            [
-                "equipment",
-                "asset",
-                "plant",
-                "device",
-                "element"
-            ]
-        );
-
-
     const result = [];
 
 
+    /*
+       Actual PA header is row 4.
+       Data begins row 5.
+    */
+
     for (
-        let i = 1;
-        i < rows.length;
-        i++
+        let r = 4;
+        r < rows.length;
+        r++
     ) {
 
         const row =
-            rows[i];
+            rows[r];
 
 
         if (!row) {
@@ -2554,38 +2841,86 @@ function getPAData() {
         }
 
 
-        let start =
-            startIndex >= 0
-                ? convertExcelDate(
-                    row[startIndex]
-                )
-                : null;
+        const date =
+            convertExcelDate(
+                row[1]
+            );
 
 
-        let end =
-            endIndex >= 0
-                ? convertExcelDate(
-                    row[endIndex]
-                )
-                : null;
-
-
-        let duration =
-            durationIndex >= 0
-                ? parseDuration(
-                    row[durationIndex]
-                )
-                : null;
+        if (!date) {
+            continue;
+        }
 
 
         /*
-           If start and end are present,
-           calculate duration automatically.
+           Z = column 26
+           JS index = 25
+        */
+
+        const faultTime =
+            row[25];
+
+
+        /*
+           AC = column 29
+           JS index = 28
+        */
+
+        const completionTime =
+            row[28];
+
+
+        /*
+           AG = column 33
+           JS index = 32
+        */
+
+        const breakdownTime =
+            parseDurationHours(
+                row[32]
+            );
+
+
+        const start =
+            combineDateTime(
+                date,
+                faultTime
+            );
+
+
+        const end =
+            combineDateTime(
+                date,
+                completionTime
+            );
+
+
+        /*
+           Only include actual breakdowns
+           with valid start and end.
         */
 
         if (
-            start instanceof Date &&
-            end instanceof Date
+            !start ||
+            !end
+        ) {
+
+            continue;
+
+        }
+
+
+        let duration =
+            breakdownTime;
+
+
+        /*
+           If AG is unavailable,
+           calculate from start/end.
+        */
+
+        if (
+            duration === null
         ) {
 
             duration =
@@ -2598,36 +2933,162 @@ function getPAData() {
         }
 
 
+        /*
+           Equipment hierarchy from
+           actual DGR columns.
+        */
+
+        const station =
+            row[11] ??
+            "";
+
+
+        const inverter =
+            row[12] ??
+            "";
+
+
+        const module =
+            row[13] ??
+            "";
+
+
+        const scb =
+            row[14] ??
+            "";
+
+
+        const equipment =
+            row[16] ??
+            "";
+
+
+        const affected =
+            row[19] ??
+            "";
+
+
+        const faultCategory =
+            row[22] ??
+            "";
+
+
+        const description =
+            row[24] ??
+            "";
+
+
+        const action =
+            row[33] ??
+            "";
+
+
+        const energyLoss =
+            parseNumber(
+                row[37]
+            );
+
+
+        /*
+           Best display name.
+        */
+
+        let label = "";
+
+
         if (
-            !start &&
-            !end
+            String(affected).trim()
         ) {
 
-            continue;
+            label =
+                String(affected);
+
+        }
+
+        else if (
+            String(equipment).trim()
+        ) {
+
+            label =
+                String(equipment);
+
+        }
+
+        else if (
+            String(scb).trim()
+        ) {
+
+            label =
+                String(scb);
+
+        }
+
+        else if (
+            String(inverter).trim()
+        ) {
+
+            label =
+                String(inverter);
+
+        }
+
+        else {
+
+            label =
+                "Breakdown";
 
         }
 
 
         result.push({
 
-            equipment:
-                equipmentIndex >= 0
-                    ? String(
-                        row[equipmentIndex] ??
-                        "Breakdown"
-                    )
-                    : "Breakdown " +
-                      i,
+            date,
 
             start,
 
             end,
 
-            duration
+            duration,
+
+            label,
+
+            station:
+                String(station),
+
+            inverter:
+                String(inverter),
+
+            module:
+                String(module),
+
+            scb:
+                String(scb),
+
+            faultCategory:
+                String(faultCategory),
+
+            description:
+                String(description),
+
+            action:
+                String(action),
+
+            energyLoss
 
         });
 
     }
+
+
+    /*
+       Sort by breakdown start.
+    */
+
+    result.sort(
+        (a, b) =>
+            a.start.getTime() -
+            b.start.getTime()
+    );
 
 
     return result;
@@ -2636,9 +3097,98 @@ function getPAData() {
 
 
 /* =========================================================
-   PA TIMELINE CHART
+   PARSE PA DURATION
+========================================================= */
 
-   Chart.js floating horizontal bars
+function parseDurationHours(
+    value
+) {
+
+    if (
+        value === null ||
+        value === undefined ||
+        value === ""
+    ) {
+
+        return null;
+
+    }
+
+
+    /*
+       Excel time value.
+    */
+
+    if (
+        typeof value === "number"
+    ) {
+
+        /*
+           Fraction of day.
+        */
+
+        if (
+            value >= 0 &&
+            value < 1
+        ) {
+
+            return value * 24;
+
+        }
+
+
+        return value;
+
+    }
+
+
+    /*
+       JavaScript Date containing
+       a time.
+    */
+
+    if (
+        value instanceof Date
+    ) {
+
+        return (
+            value.getHours() * 3600 +
+            value.getMinutes() * 60 +
+            value.getSeconds()
+        ) / 3600;
+
+    }
+
+
+    const text =
+        String(value)
+            .trim();
+
+
+    const match =
+        text.match(
+            /^(\d+):(\d{1,2})(?::(\d{1,2}))?$/
+        );
+
+
+    if (match) {
+
+        return (
+            Number(match[1]) +
+            Number(match[2]) / 60 +
+            Number(match[3] || 0) / 3600
+        );
+
+    }
+
+
+    return parseNumber(text);
+
+}
+
+
+/* =========================================================
+   PA GANTT TIMELINE
 ========================================================= */
 
 function buildPAChart() {
@@ -2647,9 +3197,7 @@ function buildPAChart() {
         getPAData();
 
 
-    destroyChart(
-        "pa"
-    );
+    destroyChart("pa");
 
 
     const canvas =
@@ -2663,22 +3211,8 @@ function buildPAChart() {
     }
 
 
-    /*
-       Convert dates into timestamps.
-
-       For entries without valid
-       dates, use sequential values.
-    */
-
-    const valid =
-        data.filter(
-            item =>
-                item.start instanceof Date
-        );
-
-
     if (
-        valid.length === 0
+        data.length === 0
     ) {
 
         showPAEmptyMessage();
@@ -2688,9 +3222,47 @@ function buildPAChart() {
     }
 
 
+    /*
+       Give every breakdown its own
+       horizontal row.
+    */
+
+    const labels =
+        data.map(
+            (
+                item,
+                index
+            ) =>
+                (
+                    index + 1
+                ) +
+                ". " +
+                item.label
+        );
+
+
+    const ganttData =
+        data.map(
+            item => ({
+
+                y:
+                    item.label,
+
+                x: [
+
+                    item.start.getTime(),
+
+                    item.end.getTime()
+
+                ]
+
+            })
+        );
+
+
     const minTime =
         Math.min(
-            ...valid.map(
+            ...data.map(
                 item =>
                     item.start.getTime()
             )
@@ -2699,21 +3271,20 @@ function buildPAChart() {
 
     const maxTime =
         Math.max(
-            ...valid.map(
+            ...data.map(
                 item =>
-                    (
-                        item.end instanceof Date
-                            ? item.end.getTime()
-                            : item.start.getTime()
-                    )
+                    item.end.getTime()
             )
         );
 
 
     /*
-       Chart.js horizontal floating bars
-       use x values as [start,end].
+       Add padding around the timeline.
     */
+
+    const padding =
+        30 * 60 * 1000;
+
 
     charts.pa =
         new Chart(
@@ -2724,47 +3295,26 @@ function buildPAChart() {
 
                 data: {
 
-                    labels:
-                        valid.map(
-                            item =>
-                                item.equipment
-                        ),
+                    labels,
 
                     datasets: [
 
                         {
 
                             label:
-                                "Breakdown Duration",
+                                "Breakdown",
 
                             data:
-                                valid.map(
-                                    item => {
-
-                                        const start =
-                                            item.start.getTime();
-
-
-                                        const end =
-                                            item.end instanceof Date
-                                                ? item.end.getTime()
-                                                : start;
-
-
-                                        return [
-                                            start,
-                                            end
-                                        ];
-
-                                    }
-                                ),
+                                ganttData,
 
                             backgroundColor:
                                 "#27A5AD",
 
-                            borderRadius: 4,
+                            borderRadius: 5,
 
-                            barThickness: 22
+                            barThickness: 24,
+
+                            borderSkipped: false
 
                         }
 
@@ -2784,6 +3334,16 @@ function buildPAChart() {
 
                     animation: false,
 
+
+                    interaction: {
+
+                        mode: "nearest",
+
+                        intersect: true
+
+                    },
+
+
                     scales: {
 
                         x: {
@@ -2791,12 +3351,26 @@ function buildPAChart() {
                             type: "linear",
 
                             min:
-                                minTime,
+                                minTime -
+                                padding,
 
                             max:
-                                maxTime,
+                                maxTime +
+                                padding,
+
+                            title: {
+
+                                display: true,
+
+                                text:
+                                    "Breakdown Date / Time"
+
+                            },
+
 
                             ticks: {
+
+                                maxTicksLimit: 12,
 
                                 callback:
                                     value =>
@@ -2808,14 +3382,6 @@ function buildPAChart() {
 
                             },
 
-                            title: {
-
-                                display: true,
-
-                                text:
-                                    "Breakdown Timeline"
-
-                            },
 
                             grid: {
 
@@ -2826,21 +3392,26 @@ function buildPAChart() {
 
                         },
 
+
                         y: {
+
+                            type: "category",
+
+                            labels,
 
                             title: {
 
                                 display: true,
 
                                 text:
-                                    "Equipment"
+                                    "Affected Equipment"
 
                             },
 
+
                             grid: {
 
-                                display:
-                                    false
+                                display: false
 
                             }
 
@@ -2857,15 +3428,98 @@ function buildPAChart() {
 
                         },
 
+
                         tooltip: {
 
                             callbacks: {
 
                                 title:
-                                    tooltipPATitle,
+                                    context => {
+
+                                        const item =
+                                            data[
+                                                context[0]
+                                                    .dataIndex
+                                            ];
+
+                                        return item
+                                            ? item.label
+                                            : "";
+
+                                    },
+
 
                                 label:
-                                    tooltipPALabel
+                                    context => {
+
+                                        const item =
+                                            data[
+                                                context.dataIndex
+                                            ];
+
+
+                                        if (!item) {
+                                            return "";
+                                        }
+
+
+                                        const lines = [];
+
+
+                                        lines.push(
+                                            "Start: " +
+                                            formatDateTime(
+                                                item.start
+                                            )
+                                        );
+
+
+                                        lines.push(
+                                            "End: " +
+                                            formatDateTime(
+                                                item.end
+                                            )
+                                        );
+
+
+                                        lines.push(
+                                            "Duration: " +
+                                            formatDuration(
+                                                item.duration
+                                            )
+                                        );
+
+
+                                        if (
+                                            item.faultCategory
+                                        ) {
+
+                                            lines.push(
+                                                "Fault: " +
+                                                item.faultCategory
+                                            );
+
+                                        }
+
+
+                                        if (
+                                            item.energyLoss !==
+                                            null
+                                        ) {
+
+                                            lines.push(
+                                                "Energy Loss: " +
+                                                item.energyLoss
+                                                    .toFixed(2) +
+                                                " kWh"
+                                            );
+
+                                        }
+
+
+                                        return lines;
+
+                                    }
 
                             }
 
@@ -2878,116 +3532,32 @@ function buildPAChart() {
             }
         );
 
-}
+
+    /*
+       Dynamically increase chart height
+       when there are many breakdowns.
+    */
+
+    const wrapper =
+        canvas.parentElement;
 
 
-/* =========================================================
-   PA TOOLTIP
-========================================================= */
+    if (wrapper) {
 
-function tooltipPATitle(
-    context
-) {
-
-    const index =
-        context[0].dataIndex;
-
-
-    const data =
-        getPAData();
-
-
-    const item =
-        data[index];
-
-
-    if (!item) {
-
-        return "";
+        wrapper.style.height =
+            Math.max(
+                420,
+                data.length * 42
+            ) +
+            "px";
 
     }
-
-
-    return item.equipment;
-
-}
-
-
-function tooltipPALabel(
-    context
-) {
-
-    const index =
-        context.dataIndex;
-
-
-    const data =
-        getPAData();
-
-
-    const item =
-        data[index];
-
-
-    if (!item) {
-
-        return "";
-
-    }
-
-
-    const lines = [];
-
-
-    if (
-        item.start instanceof Date
-    ) {
-
-        lines.push(
-            "Start: " +
-            formatDateTime(
-                item.start
-            )
-        );
-
-    }
-
-
-    if (
-        item.end instanceof Date
-    ) {
-
-        lines.push(
-            "End: " +
-            formatDateTime(
-                item.end
-            )
-        );
-
-    }
-
-
-    if (
-        item.duration !== null
-    ) {
-
-        lines.push(
-            "Duration: " +
-            formatDuration(
-                item.duration
-            )
-        );
-
-    }
-
-
-    return lines;
 
 }
 
 
 /* =========================================================
-   PA EMPTY MESSAGE
+   PA EMPTY STATE
 ========================================================= */
 
 function showPAEmptyMessage() {
@@ -2996,6 +3566,11 @@ function showPAEmptyMessage() {
         document.getElementById(
             "paChart"
         );
+
+
+    if (!canvas) {
+        return;
+    }
 
 
     const ctx =
@@ -3025,386 +3600,9 @@ function showPAEmptyMessage() {
 
 
     ctx.fillText(
-        "No valid breakdown start/end times found in PA worksheet.",
+        "No valid breakdown records found.",
         canvas.width / 2,
         canvas.height / 2
-    );
-
-}
-
-
-/* =========================================================
-   FIND COLUMN
-========================================================= */
-
-function findColumn(
-    headers,
-    possibleNames
-) {
-
-    if (!headers) {
-        return -1;
-    }
-
-
-    const normalizedHeaders =
-        headers.map(
-            header =>
-                normalizeText(
-                    header
-                )
-        );
-
-
-    const normalizedNames =
-        possibleNames.map(
-            name =>
-                normalizeText(
-                    name
-                )
-        );
-
-
-    /*
-       Exact match first.
-    */
-
-    for (
-        let i = 0;
-        i < normalizedHeaders.length;
-        i++
-    ) {
-
-        if (
-            normalizedNames.includes(
-                normalizedHeaders[i]
-            )
-        ) {
-
-            return i;
-
-        }
-
-    }
-
-
-    /*
-       Partial match second.
-    */
-
-    for (
-        let i = 0;
-        i < normalizedHeaders.length;
-        i++
-    ) {
-
-        for (
-            const name of normalizedNames
-        ) {
-
-            if (
-                normalizedHeaders[i]
-                    .includes(name)
-                ||
-                name.includes(
-                    normalizedHeaders[i]
-                )
-            ) {
-
-                return i;
-
-            }
-
-        }
-
-    }
-
-
-    return -1;
-
-}
-
-
-/* =========================================================
-   FIND LIKELY NUMERIC COLUMN
-========================================================= */
-
-function findLikelyNumericColumn(
-    rows,
-    startRow
-) {
-
-    if (!rows.length) {
-        return -1;
-    }
-
-
-    const maxColumns =
-        Math.max(
-            ...rows.map(
-                row =>
-                    row
-                        ? row.length
-                        : 0
-            )
-        );
-
-
-    let bestIndex = -1;
-
-    let bestScore = 0;
-
-
-    for (
-        let c = 0;
-        c < maxColumns;
-        c++
-    ) {
-
-        let numericCount = 0;
-
-
-        for (
-            let r = startRow;
-            r < rows.length;
-            r++
-        ) {
-
-            if (
-                parseNumber(
-                    rows[r]?.[c]
-                ) !== null
-            ) {
-
-                numericCount++;
-
-            }
-
-        }
-
-
-        if (
-            numericCount >
-            bestScore
-        ) {
-
-            bestScore =
-                numericCount;
-
-            bestIndex =
-                c;
-
-        }
-
-    }
-
-
-    return bestIndex;
-
-}
-
-
-/* =========================================================
-   CONVERT EXCEL DATE
-========================================================= */
-
-function convertExcelDate(
-    value
-) {
-
-    if (
-        value instanceof Date &&
-        !isNaN(value)
-    ) {
-
-        return value;
-
-    }
-
-
-    if (
-        typeof value === "number"
-    ) {
-
-        if (
-            value > 20000 &&
-            value < 60000
-        ) {
-
-            const parsed =
-                XLSX.SSF.parse_date_code(
-                    value
-                );
-
-
-            if (parsed) {
-
-                return new Date(
-                    parsed.y,
-                    parsed.m - 1,
-                    parsed.d,
-                    parsed.H || 0,
-                    parsed.M || 0,
-                    parsed.S || 0
-                );
-
-            }
-
-        }
-
-    }
-
-
-    if (
-        typeof value === "string"
-    ) {
-
-        const parsed =
-            new Date(value);
-
-
-        if (
-            !isNaN(parsed)
-        ) {
-
-            return parsed;
-
-        }
-
-    }
-
-
-    return value;
-
-}
-
-
-/* =========================================================
-   PARSE DURATION
-========================================================= */
-
-function parseDuration(
-    value
-) {
-
-    if (
-        value === null ||
-        value === undefined ||
-        value === ""
-    ) {
-
-        return null;
-
-    }
-
-
-    if (
-        typeof value === "number"
-    ) {
-
-        /*
-           Excel time duration may be
-           represented as a fraction
-           of a day.
-        */
-
-        if (
-            value > 0 &&
-            value < 1
-        ) {
-
-            return value * 24;
-
-        }
-
-
-        return value;
-
-    }
-
-
-    const text =
-        String(value)
-            .trim();
-
-
-    /*
-       HH:MM
-    */
-
-    const match =
-        text.match(
-            /^(\d+):(\d{1,2})(?::(\d{1,2}))?$/
-        );
-
-
-    if (match) {
-
-        const hours =
-            Number(
-                match[1]
-            );
-
-
-        const minutes =
-            Number(
-                match[2]
-            );
-
-
-        const seconds =
-            Number(
-                match[3] || 0
-            );
-
-
-        return (
-            hours +
-            minutes / 60 +
-            seconds / 3600
-        );
-
-    }
-
-
-    return parseNumber(
-        text
-    );
-
-}
-
-
-/* =========================================================
-   FORMAT DATETIME
-========================================================= */
-
-function formatDateTime(
-    value
-) {
-
-    if (
-        !(value instanceof Date) ||
-        isNaN(value)
-    ) {
-
-        return String(value);
-
-    }
-
-
-    return value.toLocaleString(
-        "en-IN",
-        {
-
-            day: "2-digit",
-
-            month: "short",
-
-            hour: "2-digit",
-
-            minute: "2-digit"
-
-        }
     );
 
 }
@@ -3428,7 +3626,7 @@ function formatDuration(
     }
 
 
-    const totalMinutes =
+    const minutes =
         Math.round(
             hours * 60
         );
@@ -3436,12 +3634,12 @@ function formatDuration(
 
     const h =
         Math.floor(
-            totalMinutes / 60
+            minutes / 60
         );
 
 
     const m =
-        totalMinutes % 60;
+        minutes % 60;
 
 
     return (
@@ -3464,10 +3662,6 @@ function updateKPIs() {
         getDailyKPIData();
 
 
-    /*
-       Latest valid value.
-    */
-
     const latestPR =
         getLatest(
             daily,
@@ -3489,62 +3683,71 @@ function updateKPIs() {
         );
 
 
-    document.getElementById(
-        "dashboardPR"
-    ).textContent =
-        latestPR !== null
-            ? latestPR.toFixed(2) + "%"
-            : "—";
+    const prElement =
+        document.getElementById(
+            "dashboardPR"
+        );
 
 
-    document.getElementById(
-        "dashboardHours"
-    ).textContent =
-        latestHours !== null
-            ? latestHours.toFixed(2) + " h"
-            : "—";
+    const hoursElement =
+        document.getElementById(
+            "dashboardHours"
+        );
 
 
-    document.getElementById(
-        "dashboardLoss"
-    ).textContent =
-        latestLoss !== null
-            ? latestLoss.toFixed(2) + "%"
-            : "—";
+    const lossElement =
+        document.getElementById(
+            "dashboardLoss"
+        );
+
+
+    if (prElement) {
+
+        prElement.textContent =
+            latestPR !== null
+                ? (
+                    latestPR * 100
+                ).toFixed(2) +
+                  "%"
+                : "—";
+
+    }
+
+
+    if (hoursElement) {
+
+        hoursElement.textContent =
+            latestHours !== null
+                ? latestHours.toFixed(2) +
+                  " h"
+                : "—";
+
+    }
+
+
+    if (lossElement) {
+
+        lossElement.textContent =
+            latestLoss !== null
+                ? (
+                    latestLoss * 100
+                ).toFixed(2) +
+                  "%"
+                : "—";
+
+    }
 
 
     /*
-       PA is calculated from PA breakdown
-       duration rather than assuming a
-       particular PA column.
+       PA card:
+       use the PA breakdown records to
+       calculate downtime percentage
+       across the reporting period.
     */
 
     const pa =
         getPAData();
 
-
-    const totalBreakdownHours =
-        pa.reduce(
-            (
-                sum,
-                item
-            ) =>
-                sum +
-                (
-                    item.duration || 0
-                ),
-            0
-        );
-
-
-    /*
-       The dashboard card shows
-       breakdown-based availability
-       only when enough information
-       exists.
-
-       Otherwise it remains "—".
-    */
 
     const paValue =
         calculatePA(
@@ -3552,12 +3755,21 @@ function updateKPIs() {
         );
 
 
-    document.getElementById(
-        "dashboardPA"
-    ).textContent =
-        paValue !== null
-            ? paValue.toFixed(2) + "%"
-            : "—";
+    const paElement =
+        document.getElementById(
+            "dashboardPA"
+        );
+
+
+    if (paElement) {
+
+        paElement.textContent =
+            paValue !== null
+                ? paValue.toFixed(2) +
+                  "%"
+                : "—";
+
+    }
 
 }
 
@@ -3600,10 +3812,9 @@ function getLatest(
 
 /* =========================================================
    CALCULATE PA
-=========================================================
 
-   Only calculates if a meaningful
-   date range can be established.
+   Uses the reporting period represented
+   by the PA breakdown records.
 
 ========================================================= */
 
@@ -3611,16 +3822,9 @@ function calculatePA(
     pa
 ) {
 
-    const valid =
-        pa.filter(
-            item =>
-                item.start instanceof Date &&
-                item.end instanceof Date
-        );
-
-
     if (
-        valid.length === 0
+        !pa ||
+        pa.length === 0
     ) {
 
         return null;
@@ -3630,7 +3834,7 @@ function calculatePA(
 
     const earliest =
         Math.min(
-            ...valid.map(
+            ...pa.map(
                 item =>
                     item.start.getTime()
             )
@@ -3639,7 +3843,7 @@ function calculatePA(
 
     const latest =
         Math.max(
-            ...valid.map(
+            ...pa.map(
                 item =>
                     item.end.getTime()
             )
@@ -3664,15 +3868,14 @@ function calculatePA(
 
 
     const downtime =
-        valid.reduce(
+        pa.reduce(
             (
                 sum,
                 item
             ) =>
                 sum +
                 (
-                    item.duration ||
-                    0
+                    item.duration || 0
                 ),
             0
         );
@@ -3697,7 +3900,7 @@ function calculatePA(
 
 
 /* =========================================================
-   RESET DASHBOARD
+   RESET
 ========================================================= */
 
 function resetDashboard() {
@@ -3712,35 +3915,51 @@ function resetDashboard() {
     Object.keys(charts)
         .forEach(
             key =>
-                destroyChart(
-                    key
-                )
+                destroyChart(key)
         );
 
 
-    fileInput.value = "";
+    if (fileInput) {
+        fileInput.value = "";
+    }
 
 
-    fileInfo.classList.add(
-        "hidden"
-    );
+    if (fileInfo) {
+
+        fileInfo.classList.add(
+            "hidden"
+        );
+
+    }
 
 
-    workbookStatus.classList.add(
-        "hidden"
-    );
+    if (workbookStatus) {
+
+        workbookStatus.classList.add(
+            "hidden"
+        );
+
+    }
 
 
-    emptyState.classList.remove(
-        "hidden"
-    );
+    if (emptyState) {
+
+        emptyState.classList.remove(
+            "hidden"
+        );
+
+    }
 
 
     hideAnalytics();
 
 
-    sidebarFileName.textContent =
-        "No DGR uploaded";
+    if (sidebarFileName) {
+
+        sidebarFileName.textContent =
+            "No DGR uploaded";
+
+    }
 
 
     statusText.textContent =
