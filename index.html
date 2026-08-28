@@ -178,7 +178,7 @@
 
 
     <!-- =====================================================
-         SIDEBAR DATA SOURCE
+         DATA SOURCE
     ====================================================== -->
 
     <div class="sidebar-bottom">
@@ -266,17 +266,12 @@
 
     <!-- =====================================================
          FILE INFORMATION
-         Hidden until a DGR is uploaded.
     ====================================================== -->
 
     <section
         id="fileUploadStatus"
         class="upload-panel"
     >
-
-        <!-- =================================================
-             FILE INFO
-        ================================================== -->
 
         <div
             id="fileInfo"
@@ -398,7 +393,7 @@
                 </strong>
 
                 <small>
-                    From PA worksheet
+                    Daily_KPI — Column S
                 </small>
 
             </div>
@@ -431,7 +426,7 @@
             </div>
 
 
-            <!-- SYSTEM LOSSES -->
+            <!-- SYSTEM LOSS -->
 
             <div class="kpi-card">
 
@@ -487,7 +482,6 @@
         </div>
 
 
-
         <!-- =================================================
              DASHBOARD CHARTS
         ================================================== -->
@@ -495,7 +489,7 @@
         <div class="dashboard-chart-grid">
 
 
-            <!-- DASHBOARD PR -->
+            <!-- PR -->
 
             <div class="chart-card">
 
@@ -519,7 +513,6 @@
 
                 </div>
 
-
                 <div class="chart-container">
 
                     <canvas
@@ -531,7 +524,7 @@
             </div>
 
 
-            <!-- DASHBOARD SYSTEM LOSS -->
+            <!-- SYSTEM LOSS -->
 
             <div class="chart-card">
 
@@ -554,7 +547,6 @@
                     </span>
 
                 </div>
-
 
                 <div class="chart-container">
 
@@ -590,12 +582,13 @@
                 </div>
 
                 <h2>
-                    Plant Availability Breakdown Timeline
+                    Plant Availability
                 </h2>
 
                 <p>
-                    Breakdown start, end and duration from the
-                    PA worksheet.
+                    Plant availability and equipment
+                    unavailability analysis from the PA
+                    worksheet.
                 </p>
 
             </div>
@@ -607,6 +600,10 @@
         </div>
 
 
+        <!-- =================================================
+             PLANT UNAVAILABILITY GANTT
+        ================================================== -->
+
         <div class="chart-card full-card">
 
             <div class="chart-heading">
@@ -614,18 +611,17 @@
                 <div>
 
                     <h3>
-                        Breakdown Duration
+                        Plant Unavailability
                     </h3>
 
                     <span>
-                        Hover over a breakdown to view
-                        start, end and duration.
+                        Fault intervals from PA · W / Z / AC
                     </span>
 
                 </div>
 
                 <span class="chart-type">
-                    TIMELINE
+                    GANTT
                 </span>
 
             </div>
@@ -665,6 +661,11 @@
                     Performance Analysis
                 </h2>
 
+                <p>
+                    Daily PR, operating hours and system loss
+                    trends.
+                </p>
+
             </div>
 
             <div class="data-badge">
@@ -701,7 +702,6 @@
 
                 </div>
 
-
                 <div class="chart-container">
 
                     <canvas id="prChart">
@@ -736,7 +736,6 @@
 
                 </div>
 
-
                 <div class="chart-container">
 
                     <canvas id="hoursChart">
@@ -747,7 +746,7 @@
             </div>
 
 
-            <!-- SYSTEM LOSSES -->
+            <!-- SYSTEM LOSS -->
 
             <div class="chart-card">
 
@@ -770,7 +769,6 @@
                     </span>
 
                 </div>
-
 
                 <div class="chart-container">
 
@@ -805,12 +803,13 @@
                 </div>
 
                 <h2>
-                    Curtailment Losses
+                    Curtailment Records
                 </h2>
 
                 <p>
-                    Curtailment records are plotted as a time
-                    series from the dedicated worksheet.
+                    Daily curtailment loss and time-duration
+                    analysis from the Curtailment records
+                    worksheet.
                 </p>
 
             </div>
@@ -822,6 +821,10 @@
         </div>
 
 
+        <!-- =================================================
+             CURTAILMENT LOSS SUMMARY / CHART
+        ================================================== -->
+
         <div class="chart-card full-card">
 
             <div class="chart-heading">
@@ -829,7 +832,7 @@
                 <div>
 
                     <h3>
-                        Curtailment Loss Trend
+                        Curtailment Loss
                     </h3>
 
                     <span id="curtailmentSummary">
@@ -839,7 +842,7 @@
                 </div>
 
                 <span class="chart-type">
-                    LINE
+                    LOSS
                 </span>
 
             </div>
@@ -938,6 +941,7 @@
 
             </div>
 
+
         </div>
 
 
@@ -983,10 +987,6 @@
 
     <!-- =====================================================
          EMPTY STATE
-         
-         NOTE:
-         There is intentionally NO second upload button here.
-         The only upload control is the top-right button.
     ====================================================== -->
 
     <div
@@ -1005,9 +1005,8 @@
         <p>
             Use the Upload DGR button above to load your
             Daily Generation Report. The dashboard will
-            automatically analyse only Dashboard,
-            Annual_KPI, Daily_KPI, PA and
-            Curtailment records.
+            analyse only Dashboard, Annual_KPI, Daily_KPI,
+            PA and Curtailment records.
         </p>
 
     </div>
