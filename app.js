@@ -1,7 +1,6 @@
 "use strict";
 
-console.log("SOLAR DGR APP.JS IS LOADING");
-
+console.log("SOLAR DGR APP.JS LOADED");
 
 let workbook = null;
 
@@ -19,20 +18,19 @@ function $(id) {
    INITIALISE
 ========================================================= */
 
-document.addEventListener(
-    "DOMContentLoaded",
-    function () {
+document.addEventListener("DOMContentLoaded", function () {
 
-        console.log("DOM LOADED");
+    console.log("DOM LOADED");
 
-        setupUpload();
+    setupUpload();
 
-        setupRemove();
+    setupRemove();
 
-        setupNavigation();
+    setupNavigation();
 
-    }
-);
+    hideAnalytics();
+
+});
 
 
 /* =========================================================
@@ -43,150 +41,109 @@ function setupUpload() {
 
     console.log("setupUpload() running");
 
-
-    const input =
-        $("dgrFile");
-
-
-    const dropZone =
-        $("dropZone");
+    const input = $("dgrFile");
+    const dropZone = $("dropZone");
 
 
     if (!input) {
 
         console.error(
-            "ERROR: #dgrFile was not found."
+            "ERROR: #dgrFile was not found in index.html"
         );
 
         return;
-
     }
 
 
-    console.log(
-        "#dgrFile found successfully"
-    );
+    console.log("#dgrFile found");
 
 
-    input.addEventListener(
-        "change",
-        function (event) {
+    input.addEventListener("change", function (event) {
 
-            console.log(
-                "FILE CHANGE EVENT"
-            );
+        console.log("FILE CHANGE EVENT FIRED");
 
 
-            const file =
-                event.target.files &&
-                event.target.files[0];
+        const file =
+            event.target.files &&
+            event.target.files[0];
 
 
-            if (!file) {
+        if (!file) {
 
-                console.warn(
-                    "No file selected."
-                );
+            console.warn("No file selected.");
 
-                return;
-
-            }
-
-
-            console.log(
-                "Selected file:",
-                file.name
-            );
-
-
-            processDGR(
-                file
-            );
-
+            return;
         }
-    );
+
+
+        console.log(
+            "Selected file:",
+            file.name
+        );
+
+
+        processDGR(file);
+
+    });
 
 
     if (!dropZone) {
 
-        console.log(
-            "No drop zone found."
-        );
+        console.log("No drop zone found.");
 
         return;
-
     }
 
 
-    dropZone.addEventListener(
-        "click",
-        function () {
+    dropZone.addEventListener("click", function () {
 
-            input.click();
+        input.click();
 
-        }
-    );
+    });
 
 
-    dropZone.addEventListener(
-        "dragover",
-        function (event) {
+    dropZone.addEventListener("dragover", function (event) {
 
-            event.preventDefault();
+        event.preventDefault();
 
-            dropZone.classList.add(
-                "dragging"
-            );
+        dropZone.classList.add("dragging");
 
-        }
-    );
+    });
 
 
-    dropZone.addEventListener(
-        "dragleave",
-        function () {
+    dropZone.addEventListener("dragleave", function () {
 
-            dropZone.classList.remove(
-                "dragging"
-            );
+        dropZone.classList.remove("dragging");
 
-        }
-    );
+    });
 
 
-    dropZone.addEventListener(
-        "drop",
-        function (event) {
+    dropZone.addEventListener("drop", function (event) {
 
-            event.preventDefault();
+        event.preventDefault();
 
-            dropZone.classList.remove(
-                "dragging"
+        dropZone.classList.remove("dragging");
+
+
+        const file =
+            event.dataTransfer &&
+            event.dataTransfer.files &&
+            event.dataTransfer.files[0];
+
+
+        if (file) {
+
+            console.log(
+                "Dropped file:",
+                file.name
             );
 
 
-            const file =
-                event.dataTransfer &&
-                event.dataTransfer.files &&
-                event.dataTransfer.files[0];
-
-
-            if (file) {
-
-                console.log(
-                    "Dropped file:",
-                    file.name
-                );
-
-
-                processDGR(
-                    file
-                );
-
-            }
+            processDGR(file);
 
         }
-    );
+
+    });
 
 }
 
@@ -195,13 +152,9 @@ function setupUpload() {
    PROCESS DGR
 ========================================================= */
 
-function processDGR(
-    file
-) {
+function processDGR(file) {
 
-    console.log(
-        "processDGR() called"
-    );
+    console.log("processDGR() called:", file);
 
 
     if (!file) {
@@ -217,9 +170,9 @@ function processDGR(
 
 
     if (
-        !["xlsx", "xls", "csv"].includes(
-            extension
-        )
+        extension !== "xlsx" &&
+        extension !== "xls" &&
+        extension !== "csv"
     ) {
 
         alert(
@@ -227,16 +180,13 @@ function processDGR(
         );
 
         return;
-
     }
 
 
-    if (
-        typeof XLSX === "undefined"
-    ) {
+    if (typeof XLSX === "undefined") {
 
         console.error(
-            "XLSX IS NOT LOADED"
+            "SheetJS (XLSX) is not loaded."
         );
 
 
@@ -245,7 +195,6 @@ function processDGR(
         );
 
         return;
-
     }
 
 
@@ -254,103 +203,107 @@ function processDGR(
     );
 
 
-    const reader =
-        new FileReader();
+    const reader = new FileReader();
 
 
-    reader.onload =
-        function (event) {
+    reader.onload = function (event) {
+
+        console.log("File successfully read.");
+
+
+        try {
+
+            workbook =
+                XLSX.read(
+                    new Uint8Array(
+                        event.target.result
+                    ),
+                    {
+                        type: "array",
+                        cellDates: true,
+                        cellNF: true,
+                        cellText: true
+                    }
+                );
+
 
             console.log(
-                "File successfully read."
+                "WORKBOOK LOADED:",
+                workbook.SheetNames
             );
 
 
-            try {
+            if (
+                !workbook ||
+                !workbook.SheetNames ||
+                workbook.SheetNames.length === 0
+            ) {
 
-                workbook =
-                    XLSX.read(
-                        new Uint8Array(
-                            event.target.result
-                        ),
-                        {
-                            type:
-                                "array",
-
-                            cellDates:
-                                true
-                        }
-                    );
-
-
-                console.log(
-                    "WORKBOOK LOADED",
-                    workbook.SheetNames
+                throw new Error(
+                    "No worksheets were found in the workbook."
                 );
-
-
-                updateFileUI(
-                    file
-                );
-
-
-                showAnalytics();
-
-
-                setStatus(
-                    `${file.name} loaded successfully.`
-                );
-
-
             }
 
-            catch (error) {
 
-                console.error(
-                    "WORKBOOK ERROR:",
-                    error
-                );
+            updateFileUI(file);
+
+            showAnalytics();
 
 
-                alert(
-                    "Could not read workbook:\n\n" +
-                    error.message
-                );
+            setStatus(
+                file.name +
+                " loaded successfully."
+            );
 
-            }
-
-        };
-
-
-    reader.onerror =
-        function (error) {
+        }
+        catch (error) {
 
             console.error(
-                "FILEREADER ERROR:",
+                "WORKBOOK ERROR:",
                 error
             );
 
-            alert(
-                "Could not read the file."
+
+            setStatus(
+                "Unable to read the DGR."
             );
 
-        };
+
+            alert(
+                "Unable to read the DGR.\n\n" +
+                error.message
+            );
+
+        }
+
+    };
 
 
-    reader.readAsArrayBuffer(
-        file
-    );
+    reader.onerror = function (error) {
+
+        console.error(
+            "FILEREADER ERROR:",
+            error
+        );
+
+
+        setStatus(
+            "Unable to read the selected file."
+        );
+
+    };
+
+
+    reader.readAsArrayBuffer(file);
 
 }
 
 
 /* =========================================================
-   UPDATE FILE UI
+   FILE UI
 ========================================================= */
 
-function updateFileUI(
-    file
-) {
+function updateFileUI(file) {
 
     setText(
         "fileName",
@@ -360,7 +313,8 @@ function updateFileUI(
 
     setText(
         "fileSheets",
-        `${workbook.SheetNames.length} worksheets detected`
+        workbook.SheetNames.length +
+        " worksheets detected"
     );
 
 
@@ -443,7 +397,6 @@ function renderSheetBadges() {
     ) {
 
         return;
-
     }
 
 
@@ -451,85 +404,70 @@ function renderSheetBadges() {
 
 
     const requiredSheets = [
-
         "Dashboard",
         "Annual_KPI",
         "Daily_KPI",
         "PA",
         "Curtailment records"
-
     ];
 
 
-    requiredSheets.forEach(
-        function (sheetName) {
+    requiredSheets.forEach(function (sheetName) {
 
-            const badge =
-                document.createElement(
-                    "span"
-                );
+        const badge =
+            document.createElement("span");
 
 
-            badge.className =
-                "sheet-badge";
+        badge.className =
+            "sheet-badge";
 
 
-            const found =
-                workbook.SheetNames.some(
-                    function (actualName) {
+        const found =
+            workbook.SheetNames.some(
+                function (actualName) {
 
-                        return normalizeSheet(
-                            actualName
-                        ) === normalizeSheet(
-                            sheetName
-                        );
+                    return normalizeSheet(
+                        actualName
+                    ) === normalizeSheet(
+                        sheetName
+                    );
 
-                    }
-                );
-
-
-            badge.textContent =
-                found
-                    ? `${sheetName} ✓`
-                    : `${sheetName} — missing`;
+                }
+            );
 
 
-            if (!found) {
-
-                badge.classList.add(
-                    "missing"
-                );
-
-            }
+        badge.textContent =
+            found
+                ? sheetName + " ✓"
+                : sheetName + " — missing";
 
 
-            container.appendChild(
-                badge
+        if (!found) {
+
+            badge.classList.add(
+                "missing"
             );
 
         }
-    );
+
+
+        container.appendChild(badge);
+
+    });
 
 }
 
 
 /* =========================================================
-   NORMALIZE SHEET
+   NORMALIZE SHEET NAME
 ========================================================= */
 
-function normalizeSheet(
-    name
-) {
+function normalizeSheet(name) {
 
-    return String(
-        name || ""
-    )
+    return String(name || "")
         .trim()
         .toLowerCase()
-        .replace(
-            /[\s_-]+/g,
-            ""
-        );
+        .replace(/[\s_-]+/g, "");
 
 }
 
@@ -546,50 +484,45 @@ function setupNavigation() {
         );
 
 
-    buttons.forEach(
-        function (button) {
+    buttons.forEach(function (button) {
 
-            button.addEventListener(
-                "click",
-                function () {
+        button.addEventListener(
+            "click",
+            function () {
 
-                    buttons.forEach(
-                        function (item) {
+                buttons.forEach(
+                    function (item) {
 
-                            item.classList.remove(
-                                "active"
-                            );
-
-                        }
-                    );
-
-
-                    button.classList.add(
-                        "active"
-                    );
-
-
-                    const target =
-                        $(button.dataset.target);
-
-
-                    if (target) {
-
-                        target.scrollIntoView({
-                            behavior:
-                                "smooth",
-
-                            block:
-                                "start"
-                        });
+                        item.classList.remove(
+                            "active"
+                        );
 
                     }
+                );
+
+
+                button.classList.add(
+                    "active"
+                );
+
+
+                const target =
+                    $(button.dataset.target);
+
+
+                if (target) {
+
+                    target.scrollIntoView({
+                        behavior: "smooth",
+                        block: "start"
+                    });
 
                 }
-            );
 
-        }
-    );
+            }
+        );
+
+    });
 
 }
 
@@ -709,83 +642,74 @@ function setupRemove() {
 
 
 /* =========================================================
-   SHOW / HIDE
+   SHOW / HIDE ANALYTICS
 ========================================================= */
 
 function hideAnalytics() {
 
-    [
+    const sections = [
         "dashboardSection",
         "paSection",
         "performanceSection",
         "curtailmentSection",
         "energySection"
-    ]
-    .forEach(
-        function (id) {
-
-            const element =
-                $(id);
+    ];
 
 
-            if (element) {
+    sections.forEach(function (id) {
 
-                element.style.display =
-                    "none";
+        const element =
+            $(id);
 
-            }
+
+        if (element) {
+
+            element.style.display =
+                "none";
 
         }
-    );
+
+    });
 
 }
 
 
 function showAnalytics() {
 
-    [
+    const sections = [
         "dashboardSection",
         "paSection",
         "performanceSection",
         "curtailmentSection",
         "energySection"
-    ]
-    .forEach(
-        function (id) {
-
-            const element =
-                $(id);
+    ];
 
 
-            if (element) {
+    sections.forEach(function (id) {
 
-                element.style.display =
-                    "";
+        const element =
+            $(id);
 
-            }
+
+        if (element) {
+
+            element.style.display =
+                "";
 
         }
-    );
 
-}
-
-
-/* =========================================================
-   STATUS
-========================================================= */
-
-function setStatus(
-    message
-) {
-
-    const element =
-        $("statusText");
+    });
 
 
-    if (element) {
+    const emptyState =
+        $("emptyState");
 
-        element.textContent =
-            message;
+
+    if (emptyState) {
+
+        emptyState.classList.add(
+            "hidden"
+        );
 
     }
 
@@ -796,10 +720,7 @@ function setStatus(
    TEXT
 ========================================================= */
 
-function setText(
-    id,
-    value
-) {
+function setText(id, value) {
 
     const element =
         $(id);
@@ -811,5 +732,19 @@ function setText(
             value;
 
     }
+
+}
+
+
+/* =========================================================
+   STATUS
+========================================================= */
+
+function setStatus(message) {
+
+    setText(
+        "statusText",
+        message
+    );
 
 }
