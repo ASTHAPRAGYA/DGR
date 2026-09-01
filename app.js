@@ -1,9 +1,10 @@
+```javascript
 /* =========================================================
    SOLAR DGR ANALYTICS
    app.js
+   =========================================================
 
    EXACT WORKBOOK MAPPING
-   =========================================================
 
    DAILY_KPI
    ---------------------------------------------------------
@@ -31,17 +32,20 @@
 
    ANNUAL_KPI
    ---------------------------------------------------------
+   H9  = Target PR (%)
+   I9  = Measured PR (%)
+
    E10:E21 = Budgeted Energy
    F10:F21 = Measured Energy
 
    ========================================================= */
 
+"use strict";
+
 
 /* =========================================================
-   GLOBAL VARIABLES
+   GLOBAL
 ========================================================= */
-
-"use strict";
 
 let workbook = null;
 
@@ -65,6 +69,8 @@ document.addEventListener(
     "DOMContentLoaded",
     function () {
 
+        installScrollStyles();
+
         setupNavigation();
 
         setupUpload();
@@ -78,13 +84,89 @@ document.addEventListener(
 
 
 /* =========================================================
+   SCROLL STYLES
+========================================================= */
+
+function installScrollStyles() {
+
+    if (
+        document.getElementById(
+            "dgr-scroll-style"
+        )
+    ) {
+
+        return;
+
+    }
+
+
+    const style =
+        document.createElement(
+            "style"
+        );
+
+
+    style.id =
+        "dgr-scroll-style";
+
+
+    style.textContent = `
+
+        .scroll-chart-container {
+            width: 100% !important;
+            height: 100% !important;
+            overflow-x: auto !important;
+            overflow-y: hidden !important;
+            position: relative !important;
+            box-sizing: border-box !important;
+            scrollbar-width: thin !important;
+            scrollbar-color: #b9cacc transparent !important;
+        }
+
+        .scroll-chart-container::-webkit-scrollbar {
+            height: 8px;
+        }
+
+        .scroll-chart-container::-webkit-scrollbar-track {
+            background: #eef3f4;
+            border-radius: 10px;
+        }
+
+        .scroll-chart-container::-webkit-scrollbar-thumb {
+            background: #b9cacc;
+            border-radius: 10px;
+        }
+
+        .scroll-chart-container::-webkit-scrollbar-thumb:hover {
+            background: #27a5ad;
+        }
+
+        .scroll-chart-container > canvas {
+            display: block !important;
+            width: auto !important;
+            max-width: none !important;
+        }
+
+    `;
+
+
+    document.head.appendChild(
+        style
+    );
+
+}
+
+
+/* =========================================================
    NAVIGATION
 ========================================================= */
 
 function setupNavigation() {
 
     const buttons =
-        document.querySelectorAll(".nav-item");
+        document.querySelectorAll(
+            ".nav-item"
+        );
 
 
     buttons.forEach(
@@ -117,8 +199,11 @@ function setupNavigation() {
                     if (target) {
 
                         target.scrollIntoView({
-                            behavior: "smooth",
-                            block: "start"
+                            behavior:
+                                "smooth",
+
+                            block:
+                                "start"
                         });
 
                     }
@@ -158,8 +243,7 @@ function setupUpload() {
         function (event) {
 
             const file =
-                event.target.files &&
-                event.target.files[0];
+                event.target.files?.[0];
 
 
             if (file) {
@@ -174,11 +258,6 @@ function setupUpload() {
     );
 
 
-    /*
-       Optional drag/drop support.
-       This only runs if a drop zone exists.
-    */
-
     const dropZone =
         $("dropZone");
 
@@ -186,6 +265,16 @@ function setupUpload() {
     if (!dropZone) {
         return;
     }
+
+
+    dropZone.addEventListener(
+        "click",
+        function () {
+
+            input.click();
+
+        }
+    );
 
 
     dropZone.addEventListener(
@@ -226,8 +315,7 @@ function setupUpload() {
 
 
             const file =
-                event.dataTransfer.files &&
-                event.dataTransfer.files[0];
+                event.dataTransfer?.files?.[0];
 
 
             if (file) {
@@ -245,7 +333,7 @@ function setupUpload() {
 
 
 /* =========================================================
-   REMOVE BUTTON
+   REMOVE
 ========================================================= */
 
 function setupRemove() {
@@ -287,7 +375,7 @@ function processDGR(
     ) {
 
         alert(
-            "Please upload a valid Excel file (.xlsx/.xls) or CSV file."
+            "Please upload a valid Excel file."
         );
 
         return;
@@ -300,8 +388,7 @@ function processDGR(
     ) {
 
         alert(
-            "SheetJS could not be loaded.\n\n" +
-            "Please check the XLSX script in index.html."
+            "SheetJS is not loaded."
         );
 
         return;
@@ -329,10 +416,17 @@ function processDGR(
                             event.target.result
                         ),
                         {
-                            type: "array",
-                            cellDates: true,
-                            cellNF: true,
-                            cellText: true
+                            type:
+                                "array",
+
+                            cellDates:
+                                true,
+
+                            cellNF:
+                                true,
+
+                            cellText:
+                                true
                         }
                     );
 
@@ -344,7 +438,7 @@ function processDGR(
                 ) {
 
                     throw new Error(
-                        "No worksheets were found in the workbook."
+                        "No worksheets were found."
                     );
 
                 }
@@ -448,6 +542,11 @@ function updateFileUI(
     );
 
 
+    $("dropZone")?.classList.add(
+        "hidden"
+    );
+
+
     renderSheetBadges();
 
 }
@@ -473,6 +572,10 @@ function renderSheetBadges() {
     }
 
 
+    container.innerHTML =
+        "";
+
+
     const required = [
 
         "Dashboard",
@@ -482,10 +585,6 @@ function renderSheetBadges() {
         "Curtailment records"
 
     ];
-
-
-    container.innerHTML =
-        "";
 
 
     required.forEach(
@@ -503,27 +602,28 @@ function renderSheetBadges() {
 
             const exists =
                 workbook.SheetNames.some(
-                    actual =>
-                        normalizeSheet(
-                            actual
-                        ) ===
-                        normalizeSheet(
-                            sheetName
-                        )
+                    function (actual) {
+
+                        return (
+                            normalizeSheet(
+                                actual
+                            ) ===
+                            normalizeSheet(
+                                sheetName
+                            )
+                        );
+
+                    }
                 );
 
 
-            if (exists) {
+            badge.textContent =
+                exists
+                    ? `${sheetName} ✓`
+                    : `${sheetName} — missing`;
 
-                badge.textContent =
-                    `${sheetName} ✓`;
 
-            }
-
-            else {
-
-                badge.textContent =
-                    `${sheetName} — missing`;
+            if (!exists) {
 
                 badge.classList.add(
                     "missing"
@@ -601,11 +701,11 @@ function getSheet(
 
     const actual =
         workbook.SheetNames.find(
-            function (sheetName) {
+            function (name) {
 
                 return (
                     normalizeSheet(
-                        sheetName
+                        name
                     ) === wanted
                 );
 
@@ -613,20 +713,17 @@ function getSheet(
         );
 
 
-    if (!actual) {
-        return null;
-    }
-
-
-    return workbook.Sheets[
-        actual
-    ];
+    return actual
+        ? workbook.Sheets[
+            actual
+        ]
+        : null;
 
 }
 
 
 /* =========================================================
-   SHEET MATRIX
+   MATRIX
 ========================================================= */
 
 function toMatrix(
@@ -641,10 +738,17 @@ function toMatrix(
     return XLSX.utils.sheet_to_json(
         sheet,
         {
-            header: 1,
-            raw: true,
-            defval: null,
-            blankrows: false
+            header:
+                1,
+
+            raw:
+                true,
+
+            defval:
+                null,
+
+            blankrows:
+                false
         }
     );
 
@@ -652,7 +756,7 @@ function toMatrix(
 
 
 /* =========================================================
-   COLUMN LETTER -> ZERO-BASED INDEX
+   COLUMN INDEX
 ========================================================= */
 
 function columnIndex(
@@ -681,7 +785,7 @@ function columnIndex(
 
 
 /* =========================================================
-   CELL BY EXCEL COLUMN
+   GET CELL FROM ROW
 ========================================================= */
 
 function getCell(
@@ -699,6 +803,30 @@ function getCell(
             column
         )
     ];
+
+}
+
+
+/* =========================================================
+   DIRECT WORKSHEET CELL
+========================================================= */
+
+function getWorksheetCell(
+    sheet,
+    address
+) {
+
+    if (
+        !sheet ||
+        !sheet[address]
+    ) {
+
+        return null;
+
+    }
+
+
+    return sheet[address];
 
 }
 
@@ -745,7 +873,9 @@ function parseNumber(
 
 
     const text =
-        String(value)
+        String(
+            value
+        )
             .trim()
             .replace(
                 /,/g,
@@ -767,15 +897,88 @@ function parseNumber(
     }
 
 
-    const number =
-        Number(text);
+    const result =
+        Number(
+            text
+        );
 
 
     return Number.isFinite(
-        number
+        result
     )
-        ? number
+        ? result
         : null;
+
+}
+
+
+/* =========================================================
+   READ NUMERIC WORKSHEET CELL
+========================================================= */
+
+function readNumericCell(
+    sheet,
+    address
+) {
+
+    const cell =
+        getWorksheetCell(
+            sheet,
+            address
+        );
+
+
+    if (!cell) {
+        return null;
+    }
+
+
+    if (
+        typeof cell.v === "number" &&
+        Number.isFinite(
+            cell.v
+        )
+    ) {
+
+        return cell.v;
+
+    }
+
+
+    if (
+        cell.w !== undefined &&
+        cell.w !== null
+    ) {
+
+        const parsed =
+            parseNumber(
+                cell.w
+            );
+
+
+        if (
+            parsed !== null
+        ) {
+
+            return parsed;
+
+        }
+
+    }
+
+
+    if (
+        cell.v !== undefined
+    ) {
+
+        return parseNumber(
+            cell.v
+        );
+
+    }
+
+
+    return null;
 
 }
 
@@ -799,10 +1002,6 @@ function parseDate(
     }
 
 
-    /*
-       JavaScript Date
-    */
-
     if (
         value instanceof Date
     ) {
@@ -818,10 +1017,6 @@ function parseDate(
     }
 
 
-    /*
-       Excel serial date
-    */
-
     if (
         typeof value === "number"
     ) {
@@ -834,7 +1029,10 @@ function parseDate(
                 );
 
 
-            if (parsed) {
+            if (
+                parsed &&
+                parsed.y
+            ) {
 
                 return new Date(
                     parsed.y,
@@ -849,28 +1047,16 @@ function parseDate(
 
         }
 
-        catch (_) {
-
-            return null;
-
-        }
+        catch (_) {}
 
     }
 
 
-    /*
-       String date
-    */
-
     const text =
-        String(value)
-            .trim();
+        String(
+            value
+        ).trim();
 
-
-    /*
-       DD/MM/YYYY
-       DD-MM-YYYY
-    */
 
     let match =
         text.match(
@@ -880,36 +1066,24 @@ function parseDate(
 
     if (match) {
 
-        const day =
-            Number(
-                match[1]
-            );
-
-
-        const month =
-            Number(
-                match[2]
-            ) - 1;
-
-
-        const year =
-            Number(
-                match[3]
-            );
-
-
         const date =
             new Date(
-                year,
-                month,
-                day
+                Number(
+                    match[3]
+                ),
+                Number(
+                    match[2]
+                ) - 1,
+                Number(
+                    match[1]
+                )
             );
 
 
         if (
-            date.getFullYear() === year &&
-            date.getMonth() === month &&
-            date.getDate() === day
+            !isNaN(
+                date.getTime()
+            )
         ) {
 
             return date;
@@ -918,10 +1092,6 @@ function parseDate(
 
     }
 
-
-    /*
-       DD-MMM-YYYY
-    */
 
     match =
         text.match(
@@ -993,64 +1163,23 @@ function parseDate(
     }
 
 
-    const date =
+    const browserDate =
         new Date(
             text
         );
 
 
-    if (
-        !isNaN(
-            date.getTime()
-        )
-    ) {
-
-        return date;
-
-    }
-
-
-    return null;
+    return isNaN(
+        browserDate.getTime()
+    )
+        ? null
+        : browserDate;
 
 }
 
 
 /* =========================================================
-   DATE KEY
-========================================================= */
-
-function makeDateKey(
-    date
-) {
-
-    return [
-
-        date.getFullYear(),
-
-        String(
-            date.getMonth() + 1
-        ).padStart(
-            2,
-            "0"
-        ),
-
-        String(
-            date.getDate()
-        ).padStart(
-            2,
-            "0"
-        )
-
-    ].join(
-        "-"
-    );
-
-}
-
-
-/* =========================================================
-   SHORT DATE
-   IMPORTANT: THIS FUNCTION WAS MISSING BEFORE
+   DATE FORMAT
 ========================================================= */
 
 function formatShortDate(
@@ -1073,17 +1202,16 @@ function formatShortDate(
     return date.toLocaleDateString(
         "en-IN",
         {
-            day: "2-digit",
-            month: "short"
+            day:
+                "2-digit",
+
+            month:
+                "short"
         }
     );
 
 }
 
-
-/* =========================================================
-   FULL DATE
-========================================================= */
 
 function formatFullDate(
     value
@@ -1105,9 +1233,14 @@ function formatFullDate(
     return date.toLocaleDateString(
         "en-IN",
         {
-            day: "2-digit",
-            month: "short",
-            year: "numeric"
+            day:
+                "2-digit",
+
+            month:
+                "short",
+
+            year:
+                "numeric"
         }
     );
 
@@ -1115,7 +1248,7 @@ function formatFullDate(
 
 
 /* =========================================================
-   TIME -> MINUTES
+   TIME PARSER
 ========================================================= */
 
 function timeToMinutes(
@@ -1133,10 +1266,6 @@ function timeToMinutes(
     }
 
 
-    /*
-       Excel time stored as Date.
-    */
-
     if (
         value instanceof Date
     ) {
@@ -1148,10 +1277,6 @@ function timeToMinutes(
 
     }
 
-
-    /*
-       Excel time as fraction.
-    */
 
     if (
         typeof value === "number"
@@ -1177,7 +1302,9 @@ function timeToMinutes(
                 );
 
 
-            if (parsed) {
+            if (
+                parsed
+            ) {
 
                 return (
                     parsed.H * 60 +
@@ -1194,7 +1321,9 @@ function timeToMinutes(
 
 
     const text =
-        String(value)
+        String(
+            value
+        )
             .trim();
 
 
@@ -1204,79 +1333,78 @@ function timeToMinutes(
         );
 
 
+    if (!match) {
+        return null;
+    }
+
+
+    let hours =
+        Number(
+            match[1]
+        );
+
+
+    const minutes =
+        Number(
+            match[2]
+        );
+
+
+    const period =
+        match[4]
+            ? match[4].toUpperCase()
+            : null;
+
+
     if (
-        match
+        period === "PM" &&
+        hours < 12
     ) {
 
-        let hours =
-            Number(
-                match[1]
-            );
-
-
-        const minutes =
-            Number(
-                match[2]
-            );
-
-
-        const period =
-            match[4]
-                ? match[4].toUpperCase()
-                : null;
-
-
-        if (
-            period === "PM" &&
-            hours < 12
-        ) {
-
-            hours += 12;
-
-        }
-
-
-        if (
-            period === "AM" &&
-            hours === 12
-        ) {
-
-            hours = 0;
-
-        }
-
-
-        if (
-            hours >= 0 &&
-            hours <= 23 &&
-            minutes >= 0 &&
-            minutes <= 59
-        ) {
-
-            return (
-                hours * 60 +
-                minutes
-            );
-
-        }
+        hours += 12;
 
     }
 
 
-    return null;
+    if (
+        period === "AM" &&
+        hours === 12
+    ) {
+
+        hours = 0;
+
+    }
+
+
+    if (
+        hours < 0 ||
+        hours > 23 ||
+        minutes < 0 ||
+        minutes > 59
+    ) {
+
+        return null;
+
+    }
+
+
+    return (
+        hours * 60 +
+        minutes
+    );
 
 }
 
 
 /* =========================================================
-   MINUTES -> HH:MM
+   TIME FORMAT
 ========================================================= */
 
 function minutesToTime(
     minutes
 ) {
 
-    let safe =
+    let value =
         Number(
             minutes
         );
@@ -1284,7 +1412,7 @@ function minutesToTime(
 
     if (
         !Number.isFinite(
-            safe
+            value
         )
     ) {
 
@@ -1293,13 +1421,13 @@ function minutesToTime(
     }
 
 
-    safe =
+    value =
         Math.max(
             0,
             Math.min(
                 1439,
                 Math.round(
-                    safe
+                    value
                 )
             )
         );
@@ -1307,12 +1435,12 @@ function minutesToTime(
 
     const hours =
         Math.floor(
-            safe / 60
+            value / 60
         );
 
 
     const mins =
-        safe % 60;
+        value % 60;
 
 
     return (
@@ -1335,7 +1463,44 @@ function minutesToTime(
 
 
 /* =========================================================
-   TEXT
+   NUMBER FORMAT
+========================================================= */
+
+function formatNumber(
+    value,
+    decimals = 2
+) {
+
+    if (
+        value === null ||
+        !Number.isFinite(
+            value
+        )
+    ) {
+
+        return "—";
+
+    }
+
+
+    return Number(
+        value
+    ).toLocaleString(
+        "en-IN",
+        {
+            minimumFractionDigits:
+                decimals,
+
+            maximumFractionDigits:
+                decimals
+        }
+    );
+
+}
+
+
+/* =========================================================
+   SET TEXT
 ========================================================= */
 
 function setText(
@@ -1362,19 +1527,72 @@ function setText(
 ========================================================= */
 
 function setStatus(
-    text
+    message
 ) {
 
     setText(
         "statusText",
-        text
+        message
     );
 
 }
 
 
 /* =========================================================
-   SHOW / HIDE ANALYTICS
+   DESTROY CHART
+========================================================= */
+
+function destroyChart(
+    id
+) {
+
+    if (
+        charts[id] &&
+        typeof charts[id].destroy ===
+        "function"
+    ) {
+
+        try {
+
+            charts[id].destroy();
+
+        }
+
+        catch (_) {}
+
+    }
+
+
+    charts[id] =
+        null;
+
+}
+
+
+/* =========================================================
+   DESTROY ALL CHARTS
+========================================================= */
+
+function destroyAllCharts() {
+
+    Object.keys(
+        charts
+    )
+    .forEach(
+        function (id) {
+
+            destroyChart(
+                id
+            );
+
+        }
+    );
+
+}
+
+
+/* =========================================================
+   SHOW / HIDE
 ========================================================= */
 
 function hideAnalytics() {
@@ -1387,15 +1605,15 @@ function hideAnalytics() {
         "energySection"
     ]
     .forEach(
-        id => {
+        function (id) {
 
-            const element =
+            const section =
                 $(id);
 
 
-            if (element) {
+            if (section) {
 
-                element.style.display =
+                section.style.display =
                     "none";
 
             }
@@ -1416,15 +1634,15 @@ function showAnalytics() {
         "energySection"
     ]
     .forEach(
-        id => {
+        function (id) {
 
-            const element =
+            const section =
                 $(id);
 
 
-            if (element) {
+            if (section) {
 
-                element.style.display =
+                section.style.display =
                     "";
 
             }
@@ -1433,92 +1651,17 @@ function showAnalytics() {
     );
 
 
-    if ($("emptyState")) {
-
-        $("emptyState").classList.add(
+    $("emptyState")
+        ?.classList
+        .add(
             "hidden"
         );
 
-    }
-
 }
 
 
 /* =========================================================
-   CHART REGISTRY
-========================================================= */
-
-function destroyChart(
-    id
-) {
-
-    if (
-        charts[id]
-    ) {
-
-        try {
-
-            charts[id].destroy();
-
-        }
-
-        catch (_) {}
-
-    }
-
-
-    charts[id] =
-        null;
-
-}
-
-
-function destroyAllCharts() {
-
-    Object.keys(
-        charts
-    )
-    .forEach(
-        destroyChart
-    );
-
-}
-
-
-/* =========================================================
-   DYNAMIC CARDS
-========================================================= */
-
-function removeDynamicCards() {
-
-    [
-        "paPercentageCard",
-        "breakdownTimelineCard",
-        "systemLossMwhCard",
-        "curtailmentTableCard",
-        "curtailmentGanttCard"
-    ]
-    .forEach(
-        id => {
-
-            const element =
-                $(id);
-
-
-            if (element) {
-
-                element.remove();
-
-            }
-
-        }
-    );
-
-}
-
-
-/* =========================================================
-   SCROLLABLE CHART PREPARATION
+   PREPARE SCROLLABLE CANVAS
 ========================================================= */
 
 function prepareScrollableCanvas(
@@ -1558,34 +1701,6 @@ function prepareScrollableCanvas(
             "scroll-chart-container";
 
 
-        wrapper.style.width =
-            "100%";
-
-
-        wrapper.style.height =
-            "100%";
-
-
-        wrapper.style.overflowX =
-            "auto";
-
-
-        wrapper.style.overflowY =
-            "hidden";
-
-
-        wrapper.style.position =
-            "relative";
-
-
-        wrapper.style.scrollbarWidth =
-            "thin";
-
-
-        wrapper.style.paddingBottom =
-            "3px";
-
-
         parent.insertBefore(
             wrapper,
             canvas
@@ -1599,146 +1714,229 @@ function prepareScrollableCanvas(
     }
 
 
-    canvas.style.width =
-        `${width}px`;
+    const actualWidth =
+        Math.max(
+            parent.clientWidth || 700,
+            width || 700
+        );
+
+
+    canvas.style.setProperty(
+        "width",
+        `${actualWidth}px`,
+        "important"
+    );
+
+
+    canvas.style.setProperty(
+        "min-width",
+        `${actualWidth}px`,
+        "important"
+    );
+
+
+    canvas.style.setProperty(
+        "max-width",
+        "none",
+        "important"
+    );
 
 
     canvas.style.height =
         "100%";
 
-
-    canvas.style.maxWidth =
-        "none";
-
-
-    canvas.style.display =
-        "block";
-
 }
 
 
 /* =========================================================
-   DAILY KPI READER
+   DAILY KPI
 ========================================================= */
 
 function readDailyKPI() {
 
-    const rows =
-        toMatrix(
-            getSheet(
-                "Daily_KPI"
-            )
+    const sheet =
+        getSheet(
+            "Daily_KPI"
+        );
+
+
+    if (!sheet || !sheet["!ref"]) {
+        return [];
+    }
+
+
+    const range =
+        XLSX.utils.decode_range(
+            sheet["!ref"]
         );
 
 
     const records = [];
 
+    let lastDate =
+        null;
 
-    rows.forEach(
-        row => {
 
-            const date =
-                parseDate(
-                    getCell(
-                        row,
-                        "B"
-                    )
+    /*
+       IMPORTANT:
+
+       Row 5 is the first data row.
+
+       B contains dates.
+       Some later B cells may be formula
+       cells such as =B5+1.
+
+       We therefore use the displayed
+       cached result first and reconstruct
+       sequential dates where necessary.
+    */
+
+    for (
+        let r = 4;
+        r <= range.e.r;
+        r++
+    ) {
+
+        const excelRow =
+            r + 1;
+
+
+        let date =
+            readDateCell(
+                sheet,
+                `B${excelRow}`
+            );
+
+
+        /*
+           Formula-date fallback.
+        */
+
+        if (
+            !date &&
+            lastDate
+        ) {
+
+            date =
+                new Date(
+                    lastDate
                 );
 
 
-            if (!date) {
-                return;
-            }
-
-
-            const hours =
-                parseNumber(
-                    getCell(
-                        row,
-                        "I"
-                    )
-                );
-
-
-            const pa =
-                parseNumber(
-                    getCell(
-                        row,
-                        "S"
-                    )
-                );
-
-
-            const pr =
-                parseNumber(
-                    getCell(
-                        row,
-                        "V"
-                    )
-                );
-
-
-            const loss =
-                parseNumber(
-                    getCell(
-                        row,
-                        "AD"
-                    )
-                );
-
-
-            /*
-               Convert decimal percentages.
-
-               1.0000 -> 100%
-               0.8420 -> 84.20%
-               0.0193 -> 1.93%
-            */
-
-            records.push({
-
-                date,
-
-                pa:
-                    pa === null
-                        ? null
-                        : (
-                            Math.abs(
-                                pa
-                            ) <= 1.5
-                                ? pa * 100
-                                : pa
-                        ),
-
-                pr:
-                    pr === null
-                        ? null
-                        : (
-                            Math.abs(
-                                pr
-                            ) <= 1.5
-                                ? pr * 100
-                                : pr
-                        ),
-
-                hours,
-
-                loss:
-                    loss === null
-                        ? null
-                        : (
-                            Math.abs(
-                                loss
-                            ) <= 1.5
-                                ? loss * 100
-                                : loss
-                        )
-
-            });
+            date.setDate(
+                date.getDate() +
+                1
+            );
 
         }
-    );
 
+
+        if (!date) {
+            continue;
+        }
+
+
+        /*
+           If a formula cached a repeated
+           date, use the expected sequential
+           date instead.
+        */
+
+        if (
+            lastDate &&
+            date <= lastDate
+        ) {
+
+            const formula =
+                sheet[
+                    `B${excelRow}`
+                ]?.f;
+
+
+            if (
+                formula
+            ) {
+
+                date =
+                    new Date(
+                        lastDate
+                    );
+
+
+                date.setDate(
+                    date.getDate() +
+                    1
+                );
+
+            }
+
+        }
+
+
+        lastDate =
+            new Date(
+                date
+            );
+
+
+        const hoursRaw =
+            readNumericCell(
+                sheet,
+                `I${excelRow}`
+            );
+
+
+        const paRaw =
+            readNumericCell(
+                sheet,
+                `S${excelRow}`
+            );
+
+
+        const prRaw =
+            readNumericCell(
+                sheet,
+                `V${excelRow}`
+            );
+
+
+        const lossRaw =
+            readNumericCell(
+                sheet,
+                `AD${excelRow}`
+            );
+
+
+        records.push({
+
+            date,
+
+            hours:
+                hoursRaw,
+
+            pa:
+                convertPercentage(
+                    paRaw
+                ),
+
+            pr:
+                convertPercentage(
+                    prRaw
+                ),
+
+            loss:
+                convertPercentage(
+                    lossRaw
+                )
+
+        });
+
+    }
+
+
+    /*
+       Sort chronologically.
+    */
 
     records.sort(
         (a, b) =>
@@ -1753,53 +1951,173 @@ function readDailyKPI() {
 
 
 /* =========================================================
-   DASHBOARD KPI
+   READ DATE CELL
 ========================================================= */
 
-function renderDashboardKPI(
-    records
+function readDateCell(
+    sheet,
+    address
 ) {
 
-    if (!records.length) {
-        return;
+    const cell =
+        getWorksheetCell(
+            sheet,
+            address
+        );
+
+
+    if (!cell) {
+        return null;
     }
 
 
-    const latest =
-        records[
-            records.length - 1
-        ];
+    /*
+       First try displayed value.
+    */
+
+    if (
+        cell.w !== undefined &&
+        cell.w !== null
+    ) {
+
+        const date =
+            parseDate(
+                cell.w
+            );
 
 
-    setText(
-        "dashboardPA",
-        latest.pa === null
-            ? "—"
-            : `${latest.pa.toFixed(2)}%`
-    );
+        if (date) {
+            return date;
+        }
+
+    }
 
 
-    setText(
-        "dashboardPR",
-        latest.pr === null
-            ? "—"
-            : `${latest.pr.toFixed(2)}%`
-    );
+    /*
+       Then raw value.
+    */
+
+    if (
+        cell.v !== undefined
+    ) {
+
+        return parseDate(
+            cell.v
+        );
+
+    }
 
 
-    setText(
-        "dashboardLoss",
-        latest.loss === null
-            ? "—"
-            : `${latest.loss.toFixed(2)}%`
-    );
+    return null;
+
+}
 
 
-    setText(
-        "dashboardHours",
-        latest.hours === null
-            ? "—"
-            : `${latest.hours.toFixed(2)} h`
+/* =========================================================
+   PERCENTAGE CONVERSION
+========================================================= */
+
+function convertPercentage(
+    value
+) {
+
+    if (
+        value === null ||
+        value === undefined
+    ) {
+
+        return null;
+
+    }
+
+
+    const number =
+        Number(
+            value
+        );
+
+
+    if (
+        !Number.isFinite(
+            number
+        )
+    ) {
+
+        return null;
+
+    }
+
+
+    /*
+       Decimal:
+
+       0.9965 = 99.65%
+       0.8420 = 84.20%
+       0.0193 = 1.93%
+
+       Already formatted:
+
+       99.65 stays 99.65
+    */
+
+    if (
+        Math.abs(
+            number
+        ) <= 1.5
+    ) {
+
+        return number * 100;
+
+    }
+
+
+    return number;
+
+}
+
+
+/* =========================================================
+   DAILY LABELS
+========================================================= */
+
+function dailyLabels(
+    records
+) {
+
+    return records.map(
+        record => {
+
+            const day =
+                record.date.getDate();
+
+
+            /*
+               Show every second day when
+               there are approximately 20–35
+               records in the selected month.
+
+               Data remains daily.
+            */
+
+            if (
+                records.length >= 20 &&
+                records.length <= 35
+            ) {
+
+                return (
+                    day % 2 === 0
+                        ? String(day)
+                        : ""
+                );
+
+            }
+
+
+            return formatShortDate(
+                record.date
+            );
+
+        }
     );
 
 }
@@ -1815,7 +2133,7 @@ function createDailyLineChart(
     values,
     datasetLabel,
     yTitle,
-    beginAtZero = false
+    options = {}
 ) {
 
     const canvas =
@@ -1838,7 +2156,7 @@ function createDailyLineChart(
 
     const width =
         Math.max(
-            650,
+            parent?.clientWidth || 700,
             labels.length * 60
         );
 
@@ -1849,13 +2167,7 @@ function createDailyLineChart(
     );
 
 
-    chartRegistryFallback(
-        canvasId
-    );
-
-
-    chartRegistrySet(
-        canvasId,
+    charts[canvasId] =
         new Chart(
             canvas.getContext(
                 "2d"
@@ -1889,7 +2201,7 @@ function createDailyLineChart(
                                 6,
 
                             tension:
-                                0.25,
+                                0.22,
 
                             fill:
                                 false
@@ -1950,13 +2262,7 @@ function createDailyLineChart(
                             ticks: {
 
                                 autoSkip:
-                                    true,
-
-                                maxTicksLimit:
-                                    Math.min(
-                                        12,
-                                        labels.length
-                                    ),
+                                    false,
 
                                 maxRotation:
                                     0,
@@ -1971,7 +2277,15 @@ function createDailyLineChart(
 
                         y: {
 
-                            beginAtZero,
+                            beginAtZero:
+                                options.beginAtZero ||
+                                false,
+
+                            min:
+                                options.min,
+
+                            max:
+                                options.max,
 
                             title: {
 
@@ -1997,51 +2311,14 @@ function createDailyLineChart(
                 }
 
             }
-        )
-    );
-
-}
-
-
-/* =========================================================
-   CHART REGISTRY HELPERS
-========================================================= */
-
-function chartRegistrySet(
-    id,
-    chart
-) {
-
-    charts[id] =
-        chart;
-
-}
-
-
-function chartRegistryFallback(
-    id
-) {
-
-    if (
-        charts[id]
-    ) {
-
-        try {
-            charts[id].destroy();
-        }
-
-        catch (_) {}
-
-        charts[id] =
-            null;
-
-    }
+        );
 
 }
 
 
 /* =========================================================
    DAILY CHARTS
+   CURRENT WORKING VERSION
 ========================================================= */
 
 function renderDailyCharts(
@@ -2053,56 +2330,14 @@ function renderDailyCharts(
     }
 
 
-    /*
-       To keep date labels readable, only
-       every second date is visibly labelled
-       when the dataset is approximately
-       one month.
-
-       The actual data remains daily.
-    */
-
     const labels =
-        records.map(
-            (record, index) => {
-
-                const day =
-                    record.date.getDate();
-
-
-                if (
-                    records.length >= 20 &&
-                    records.length <= 35
-                ) {
-
-                    return (
-                        day % 2 === 0
-                            ? String(day)
-                            : ""
-                    );
-
-                }
-
-
-                return formatShortDate(
-                    record.date
-                );
-
-            }
+        dailyLabels(
+            records
         );
 
 
     /*
-       PA
-    */
-
-    renderPAPercentageChart(
-        records
-    );
-
-
-    /*
-       PR
+       PR — KEEP CURRENT
     */
 
     createDailyLineChart(
@@ -2114,7 +2349,32 @@ function renderDailyCharts(
         ),
         "Performance Ratio",
         "PR (%)",
-        false
+        {
+            min:
+                0,
+
+            max:
+                100
+        }
+    );
+
+
+    createDailyLineChart(
+        "dashboardPRChart",
+        labels,
+        records.map(
+            record =>
+                record.pr
+        ),
+        "Performance Ratio",
+        "PR (%)",
+        {
+            min:
+                0,
+
+            max:
+                100
+        }
     );
 
 
@@ -2131,12 +2391,15 @@ function renderDailyCharts(
         ),
         "Operating Hours",
         "Operating Hours",
-        true
+        {
+            beginAtZero:
+                true
+        }
     );
 
 
     /*
-       System Loss
+       SYSTEM LOSS — KEEP CURRENT
     */
 
     createDailyLineChart(
@@ -2146,32 +2409,14 @@ function renderDailyCharts(
             record =>
                 record.loss
         ),
-        "System Losses",
+        "System Loss",
         "System Loss (%)",
-        true
+        {
+            beginAtZero:
+                true
+        }
     );
 
-
-    /*
-       Dashboard PR
-    */
-
-    createDailyLineChart(
-        "dashboardPRChart",
-        labels,
-        records.map(
-            record =>
-                record.pr
-        ),
-        "Performance Ratio",
-        "PR (%)",
-        false
-    );
-
-
-    /*
-       Dashboard System Loss
-    */
 
     createDailyLineChart(
         "dashboardLossChart",
@@ -2180,9 +2425,21 @@ function renderDailyCharts(
             record =>
                 record.loss
         ),
-        "System Losses",
+        "System Loss",
         "System Loss (%)",
-        true
+        {
+            beginAtZero:
+                true
+        }
+    );
+
+
+    /*
+       PA — KEEP CURRENT
+    */
+
+    renderPAPercentageChart(
+        records
     );
 
 }
@@ -2290,7 +2547,7 @@ function ensurePAPercentageCard() {
 
 
 /* =========================================================
-   PA PERCENTAGE CHART
+   PA PERCENTAGE
 ========================================================= */
 
 function renderPAPercentageChart(
@@ -2321,38 +2578,14 @@ function renderPAPercentageChart(
 
 
     const labels =
-        records.map(
-            record => {
-
-                const day =
-                    record.date.getDate();
-
-
-                if (
-                    records.length >= 20 &&
-                    records.length <= 35
-                ) {
-
-                    return (
-                        day % 2 === 0
-                            ? String(day)
-                            : ""
-                    );
-
-                }
-
-
-                return formatShortDate(
-                    record.date
-                );
-
-            }
+        dailyLabels(
+            records
         );
 
 
     const width =
         Math.max(
-            650,
+            700,
             records.length * 60
         );
 
@@ -2363,9 +2596,7 @@ function renderPAPercentageChart(
     );
 
 
-    chartRegistrySet(
-        "paPercentageChart",
-
+    charts.paPercentageChart =
         new Chart(
             canvas.getContext(
                 "2d"
@@ -2455,6 +2686,9 @@ function renderPAPercentageChart(
                                     false,
 
                                 maxRotation:
+                                    0,
+
+                                minRotation:
                                     0
 
                             }
@@ -2498,14 +2732,13 @@ function renderPAPercentageChart(
                 }
 
             }
-        )
-    );
+        );
 
 }
 
 
 /* =========================================================
-   PLANT UNAVAILABILITY DATA
+   PLANT UNAVAILABILITY
 ========================================================= */
 
 function readPlantUnavailability() {
@@ -2565,13 +2798,8 @@ function readPlantUnavailability() {
                 ).trim();
 
 
-            if (
-                !name ||
-                name === "#REF!"
-            ) {
-
+            if (!name) {
                 return;
-
             }
 
 
@@ -2590,8 +2818,7 @@ function readPlantUnavailability() {
 
 
             if (
-                actualEnd <
-                start
+                actualEnd < start
             ) {
 
                 actualEnd +=
@@ -2657,16 +2884,6 @@ function renderPlantUnavailability() {
     }
 
 
-    /*
-       48 half-hour intervals.
-
-       48 × 48 px = 2304 px
-       internal chart width.
-
-       The card remains the same size.
-       User scrolls horizontally.
-    */
-
     prepareScrollableCanvas(
         canvas,
         2304
@@ -2703,12 +2920,6 @@ function renderPlantUnavailability() {
 
                 ],
 
-                backgroundColor:
-                    "rgba(39,165,173,0.72)",
-
-                borderColor:
-                    "#27A5AD",
-
                 borderWidth:
                     1,
 
@@ -2722,9 +2933,7 @@ function renderPlantUnavailability() {
         );
 
 
-    chartRegistrySet(
-        "paChart",
-
+    charts.paChart =
         new Chart(
             canvas.getContext(
                 "2d"
@@ -2776,21 +2985,12 @@ function renderPlantUnavailability() {
                             callbacks: {
 
                                 title:
-                                    context => {
-
-                                        const index =
+                                    context =>
+                                        records[
                                             context[0]
-                                                ?.dataIndex;
-
-
-                                        return (
-                                            records[
-                                                index
-                                            ]?.issue ||
-                                            ""
-                                        );
-
-                                    },
+                                                .dataIndex
+                                        ]?.issue ||
+                                        "",
 
 
                                 label:
@@ -2810,13 +3010,9 @@ function renderPlantUnavailability() {
 
                                         return [
 
-                                            `Start: ${minutesToTime(
-                                                item.start
-                                            )}`,
+                                            `Start: ${minutesToTime(item.start)}`,
 
-                                            `End: ${minutesToTime(
-                                                item.end
-                                            )}`,
+                                            `End: ${minutesToTime(item.end)}`,
 
                                             `Duration: ${
                                                 item.end -
@@ -2847,23 +3043,6 @@ function renderPlantUnavailability() {
                             max:
                                 1439,
 
-                            title: {
-
-                                display:
-                                    true,
-
-                                text:
-                                    "Time"
-
-                            },
-
-                            grid: {
-
-                                color:
-                                    "rgba(23,37,42,0.08)"
-
-                            },
-
                             ticks: {
 
                                 stepSize:
@@ -2874,6 +3053,16 @@ function renderPlantUnavailability() {
                                         minutesToTime(
                                             value
                                         )
+
+                            },
+
+                            title: {
+
+                                display:
+                                    true,
+
+                                text:
+                                    "Time"
 
                             }
 
@@ -2908,14 +3097,14 @@ function renderPlantUnavailability() {
                 }
 
             }
-        )
-    );
+        );
 
 }
 
 
 /* =========================================================
    BREAKDOWN TIMELINE
+   RESTORED FROM YOUR WORKING VERSION
 ========================================================= */
 
 function readBreakdownTimeline() {
@@ -3011,6 +3200,39 @@ function readBreakdownTimeline() {
         (a, b) =>
             a.date -
             b.date
+    );
+
+}
+
+
+/* =========================================================
+   DATE KEY
+========================================================= */
+
+function makeDateKey(
+    date
+) {
+
+    return [
+
+        date.getFullYear(),
+
+        String(
+            date.getMonth() + 1
+        ).padStart(
+            2,
+            "0"
+        ),
+
+        String(
+            date.getDate()
+        ).padStart(
+            2,
+            "0"
+        )
+
+    ].join(
+        "-"
     );
 
 }
@@ -3143,9 +3365,7 @@ function renderBreakdownTimeline() {
     }
 
 
-    chartRegistrySet(
-        "breakdownChart",
-
+    charts.breakdownChart =
         new Chart(
             canvas.getContext(
                 "2d"
@@ -3228,6 +3448,13 @@ function renderBreakdownTimeline() {
                             max:
                                 13,
 
+                            ticks: {
+
+                                stepSize:
+                                    1
+
+                            },
+
                             title: {
 
                                 display:
@@ -3235,13 +3462,6 @@ function renderBreakdownTimeline() {
 
                                 text:
                                     "Breakdown Time (minutes)"
-
-                            },
-
-                            ticks: {
-
-                                stepSize:
-                                    1
 
                             }
 
@@ -3264,8 +3484,7 @@ function renderBreakdownTimeline() {
                 }
 
             }
-        )
-    );
+        );
 
 }
 
@@ -3373,7 +3592,7 @@ function readSystemLossMWh() {
 
 
 /* =========================================================
-   SYSTEM LOSS CARD
+   SYSTEM LOSS MWh CARD
 ========================================================= */
 
 function ensureSystemLossCard() {
@@ -3455,7 +3674,7 @@ function ensureSystemLossCard() {
 
 
 /* =========================================================
-   SYSTEM LOSS CHART
+   SYSTEM LOSS MWh CHART
 ========================================================= */
 
 function renderSystemLossMWh() {
@@ -3512,9 +3731,7 @@ function renderSystemLossMWh() {
     );
 
 
-    chartRegistrySet(
-        "systemLossMwhChart",
-
+    charts.systemLossMwhChart =
         new Chart(
             canvas.getContext(
                 "2d"
@@ -3593,26 +3810,6 @@ function renderSystemLossMWh() {
                                 display:
                                     false
 
-                            },
-
-                            ticks: {
-
-                                autoSkip:
-                                    true,
-
-                                maxTicksLimit:
-                                    15
-
-                            },
-
-                            title: {
-
-                                display:
-                                    true,
-
-                                text:
-                                    "Date"
-
                             }
 
                         },
@@ -3640,14 +3837,14 @@ function renderSystemLossMWh() {
                 }
 
             }
-        )
-    );
+        );
 
 }
 
 
 /* =========================================================
-   CURTAILMENT DATA
+   CURTAILMENT
+   RESTORED FROM YOUR WORKING VERSION
 ========================================================= */
 
 function readCurtailment() {
@@ -3718,8 +3915,7 @@ function readCurtailment() {
 
 
             if (
-                actualEnd <
-                start
+                actualEnd < start
             ) {
 
                 actualEnd +=
@@ -3879,9 +4075,7 @@ function renderCurtailmentLossChart(
     );
 
 
-    chartRegistrySet(
-        "curtailmentChart",
-
+    charts.curtailmentChart =
         new Chart(
             canvas.getContext(
                 "2d"
@@ -3915,7 +4109,7 @@ function renderCurtailmentLossChart(
                                 6,
 
                             tension:
-                                0.2,
+                                0.20,
 
                             fill:
                                 false
@@ -4018,15 +4212,13 @@ function renderCurtailmentLossChart(
                 }
 
             }
-        )
-    );
+        );
 
 
     const total =
         values.reduce(
             (sum, value) =>
-                sum +
-                value,
+                sum + value,
             0
         );
 
@@ -4118,7 +4310,7 @@ function ensureCurtailmentTable() {
 
 
 /* =========================================================
-   CURTAILMENT TABLE RENDER
+   CURTAILMENT TABLE
 ========================================================= */
 
 function renderCurtailmentTable(
@@ -4197,8 +4389,8 @@ function renderCurtailmentTable(
 
             <div style="
                 padding:16px;
-                font-size:10px;
                 color:#879397;
+                font-size:10px;
             ">
                 No curtailment records found.
             </div>
@@ -4425,15 +4617,6 @@ function renderCurtailmentGantt(
     }
 
 
-    /*
-       06:00–18:00 = 720 minutes.
-
-       15-minute intervals = 48 intervals.
-
-       48 × 50px = 2400px internal
-       width.
-    */
-
     prepareScrollableCanvas(
         canvas,
         2400
@@ -4519,12 +4702,6 @@ function renderCurtailmentGantt(
 
                         ],
 
-                        backgroundColor:
-                            "rgba(39,165,173,0.72)",
-
-                        borderColor:
-                            "#27A5AD",
-
                         borderWidth:
                             1,
 
@@ -4540,9 +4717,7 @@ function renderCurtailmentGantt(
             );
 
 
-    chartRegistrySet(
-        "curtailmentGanttChart",
-
+    charts.curtailmentGanttChart =
         new Chart(
             canvas.getContext(
                 "2d"
@@ -4659,21 +4834,11 @@ function renderCurtailmentGantt(
                                 stepSize:
                                     15,
 
-                                maxRotation:
-                                    0,
-
                                 callback:
                                     value =>
                                         minutesToTime(
                                             value
                                         )
-
-                            },
-
-                            grid: {
-
-                                color:
-                                    "rgba(23,37,42,0.08)"
 
                             }
 
@@ -4712,14 +4877,353 @@ function renderCurtailmentGantt(
                 }
 
             }
-        )
+        );
+
+}
+
+
+/* =========================================================
+   MONTHLY PR
+========================================================= */
+
+function readMonthlyPR() {
+
+    const sheet =
+        getSheet(
+            "Annual_KPI"
+        );
+
+
+    if (!sheet) {
+        return [];
+    }
+
+
+    const months = [
+
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+        "January",
+        "February",
+        "March"
+
+    ];
+
+
+    const result = [];
+
+
+    for (
+        let row = 10;
+        row <= 21;
+        row++
+    ) {
+
+        const target =
+            readNumericCell(
+                sheet,
+                `H${row}`
+            );
+
+
+        const measured =
+            readNumericCell(
+                sheet,
+                `I${row}`
+            );
+
+
+        if (
+            target === null &&
+            measured === null
+        ) {
+
+            continue;
+
+        }
+
+
+        result.push({
+
+            month:
+                months[
+                    row - 10
+                ],
+
+            target:
+                convertPercentage(
+                    target
+                ),
+
+            measured:
+                convertPercentage(
+                    measured
+                )
+
+        });
+
+    }
+
+
+    return result;
+
+}
+
+
+/* =========================================================
+   MONTHLY PR CHART
+========================================================= */
+
+function renderMonthlyPRChart() {
+
+    /*
+       This is retained separately from
+       the daily PR graph.
+
+       It does NOT replace the current
+       Daily_KPI PR graph.
+    */
+
+    const records =
+        readMonthlyPR();
+
+
+    if (!records.length) {
+        return;
+    }
+
+
+    const section =
+        $("performanceSection");
+
+
+    if (!section) {
+        return;
+    }
+
+
+    let card =
+        $("monthlyPRCard");
+
+
+    if (!card) {
+
+        card =
+            document.createElement(
+                "div"
+            );
+
+
+        card.id =
+            "monthlyPRCard";
+
+
+        card.className =
+            "chart-card full-card";
+
+
+        card.style.marginTop =
+            "14px";
+
+
+        card.innerHTML = `
+
+            <div class="chart-heading">
+
+                <div>
+
+                    <h3>
+                        Monthly Performance Ratio
+                    </h3>
+
+                    <span>
+                        Annual_KPI · Measured PR(%) · Column I
+                    </span>
+
+                </div>
+
+                <span class="chart-type">
+                    MONTHLY PR
+                </span>
+
+            </div>
+
+            <div class="chart-container">
+
+                <canvas id="monthlyPRChart"></canvas>
+
+            </div>
+
+        `;
+
+
+        section.appendChild(
+            card
+        );
+
+    }
+
+
+    const canvas =
+        $("monthlyPRChart");
+
+
+    if (!canvas) {
+        return;
+    }
+
+
+    destroyChart(
+        "monthlyPRChart"
     );
+
+
+    charts.monthlyPRChart =
+        new Chart(
+            canvas.getContext(
+                "2d"
+            ),
+            {
+
+                type:
+                    "bar",
+
+                data: {
+
+                    labels:
+                        records.map(
+                            record =>
+                                record.month
+                        ),
+
+                    datasets: [
+
+                        {
+
+                            label:
+                                "Measured PR (%)",
+
+                            data:
+                                records.map(
+                                    record =>
+                                        record.measured
+                                ),
+
+                            borderWidth:
+                                1,
+
+                            borderRadius:
+                                4
+
+                        }
+
+                    ]
+
+                },
+
+
+                options: {
+
+                    indexAxis:
+                        "y",
+
+                    responsive:
+                        true,
+
+                    maintainAspectRatio:
+                        false,
+
+                    animation:
+                        false,
+
+
+                    plugins: {
+
+                        legend: {
+
+                            display:
+                                false
+
+                        }
+
+                    },
+
+
+                    scales: {
+
+                        x: {
+
+                            min:
+                                0,
+
+                            max:
+                                100,
+
+                            title: {
+
+                                display:
+                                    true,
+
+                                text:
+                                    "Performance Ratio (%)"
+
+                            },
+
+                            ticks: {
+
+                                stepSize:
+                                    10,
+
+                                callback:
+                                    value =>
+                                        `${value}%`
+
+                            }
+
+                        },
+
+
+                        y: {
+
+                            title: {
+
+                                display:
+                                    true,
+
+                                text:
+                                    "Month"
+
+                            },
+
+                            grid: {
+
+                                display:
+                                    false
+
+                            }
+
+                        }
+
+                    }
+
+                }
+
+            }
+        );
 
 }
 
 
 /* =========================================================
    ENERGY
+   RESTORED FROM YOUR WORKING VERSION
 ========================================================= */
 
 function renderEnergyChart() {
@@ -4746,7 +5250,7 @@ function renderEnergyChart() {
 
 
     /*
-       Exact requested locations:
+       EXACT:
        E10:E21
        F10:F21
     */
@@ -4765,7 +5269,7 @@ function renderEnergyChart() {
 
 
         budget.push(
-            numberValue(
+            parseNumber(
                 getCell(
                     row,
                     "E"
@@ -4775,7 +5279,7 @@ function renderEnergyChart() {
 
 
         measured.push(
-            numberValue(
+            parseNumber(
                 getCell(
                     row,
                     "F"
@@ -4833,28 +5337,25 @@ function renderEnergyChart() {
 
     setText(
         "totalBudget",
-        formatNumber(
+        `${formatNumber(
             totalBudget
-        ) +
-        " MWh"
+        )} MWh`
     );
 
 
     setText(
         "totalMeasured",
-        formatNumber(
+        `${formatNumber(
             totalMeasured
-        ) +
-        " MWh"
+        )} MWh`
     );
 
 
     setText(
         "energyVariance",
-        formatNumber(
+        `${formatNumber(
             variance
-        ) +
-        " MWh"
+        )} MWh`
     );
 
 
@@ -4872,9 +5373,7 @@ function renderEnergyChart() {
     );
 
 
-    chartRegistrySet(
-        "energyChart",
-
+    charts.energyChart =
         new Chart(
             canvas.getContext(
                 "2d"
@@ -4990,14 +5489,130 @@ function renderEnergyChart() {
                 }
 
             }
-        )
+        );
+
+}
+
+
+/* =========================================================
+   CANVAS EMPTY MESSAGE
+========================================================= */
+
+function showCanvasMessage(
+    canvas,
+    message
+) {
+
+    if (!canvas) {
+        return;
+    }
+
+
+    const ctx =
+        canvas.getContext(
+            "2d"
+        );
+
+
+    if (!ctx) {
+        return;
+    }
+
+
+    ctx.clearRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    );
+
+
+    ctx.save();
+
+
+    ctx.textAlign =
+        "center";
+
+
+    ctx.textBaseline =
+        "middle";
+
+
+    ctx.font =
+        "12px Inter, Arial";
+
+
+    ctx.fillStyle =
+        "#879397";
+
+
+    ctx.fillText(
+        message,
+        canvas.width / 2,
+        canvas.height / 2
+    );
+
+
+    ctx.restore();
+
+}
+
+
+/* =========================================================
+   DASHBOARD KPI
+========================================================= */
+
+function renderDashboardKPI(
+    records
+) {
+
+    if (!records.length) {
+        return;
+    }
+
+
+    const latest =
+        records[
+            records.length - 1
+        ];
+
+
+    setText(
+        "dashboardPA",
+        latest.pa === null
+            ? "—"
+            : `${latest.pa.toFixed(2)}%`
+    );
+
+
+    setText(
+        "dashboardPR",
+        latest.pr === null
+            ? "—"
+            : `${latest.pr.toFixed(2)}%`
+    );
+
+
+    setText(
+        "dashboardLoss",
+        latest.loss === null
+            ? "—"
+            : `${latest.loss.toFixed(2)}%`
+    );
+
+
+    setText(
+        "dashboardHours",
+        latest.hours === null
+            ? "—"
+            : `${latest.hours.toFixed(2)} h`
     );
 
 }
 
 
 /* =========================================================
-   MAIN RENDER
+   RENDER DASHBOARD
 ========================================================= */
 
 function renderDashboard() {
@@ -5064,7 +5679,14 @@ function renderDashboard() {
 
 
     /*
-       ANNUAL ENERGY
+       MONTHLY PR
+    */
+
+    renderMonthlyPRChart();
+
+
+    /*
+       ENERGY
     */
 
     renderEnergyChart();
@@ -5073,7 +5695,40 @@ function renderDashboard() {
 
 
 /* =========================================================
-   RESET
+   REMOVE DYNAMIC CARDS
+========================================================= */
+
+function removeDynamicCards() {
+
+    [
+        "paPercentageCard",
+        "breakdownTimelineCard",
+        "systemLossMwhCard",
+        "monthlyPRCard",
+        "curtailmentTableCard",
+        "curtailmentGanttCard"
+    ]
+    .forEach(
+        id => {
+
+            const element =
+                $(id);
+
+
+            if (element) {
+
+                element.remove();
+
+            }
+
+        }
+    );
+
+}
+
+
+/* =========================================================
+   RESET DASHBOARD
 ========================================================= */
 
 function resetDashboard() {
@@ -5099,24 +5754,32 @@ function resetDashboard() {
     }
 
 
-    $("fileInfo")?.classList.add(
-        "hidden"
-    );
+    $("fileInfo")
+        ?.classList
+        .add(
+            "hidden"
+        );
 
 
-    $("workbookStatus")?.classList.add(
-        "hidden"
-    );
+    $("workbookStatus")
+        ?.classList
+        .add(
+            "hidden"
+        );
 
 
-    $("emptyState")?.classList.remove(
-        "hidden"
-    );
+    $("dropZone")
+        ?.classList
+        .remove(
+            "hidden"
+        );
 
 
-    $("dropZone")?.classList.remove(
-        "hidden"
-    );
+    $("emptyState")
+        ?.classList
+        .remove(
+            "hidden"
+        );
 
 
     [
@@ -5162,3 +5825,4 @@ function resetDashboard() {
 /* =========================================================
    END
 ========================================================= */
+```
