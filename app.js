@@ -1,9 +1,8 @@
 /* =========================================================
    SOLAR DGR ANALYTICS
    app.js
-   =========================================================
 
-   EXACT WORKBOOK MAPPING
+   CONSOLIDATED FINAL VERSION
 
    DAILY_KPI
    ---------------------------------------------------------
@@ -20,20 +19,21 @@
    Z  = Fault Start Time
    AC = Work Completion Time
    AG = Breakdown Time (minutes)
-   AL = System Loss / Energy Loss
+   AL = System Loss / Energy Loss (MWh)
 
    CURTAILMENT RECORDS
    ---------------------------------------------------------
    C  = Date
    H  = Start Time
    I  = End Time
-   R  = Loss of Generation MWh
+   R  = Loss of Generation (MWh)
 
    ANNUAL_KPI
    ---------------------------------------------------------
    H9  = Target PR (%)
    I9  = Measured PR (%)
-   H10:I21 = Monthly PR
+   H10:H21 = Monthly Target PR
+   I10:I21 = Monthly Measured PR
 
    E10:E21 = Budgeted Energy
    F10:F21 = Measured Energy
@@ -44,7 +44,7 @@
 
 
 /* =========================================================
-   GLOBAL VARIABLES
+   GLOBAL
 ========================================================= */
 
 let workbook = null;
@@ -78,7 +78,7 @@ document.addEventListener(
 
         setupUpload();
 
-        setupRemoveButton();
+        setupRemove();
 
         hideAnalytics();
 
@@ -142,9 +142,7 @@ function installScrollStyles() {
 
         .dgr-scroll-wrapper > canvas {
             display: block !important;
-            width: auto !important;
             max-width: none !important;
-            min-width: 0 !important;
         }
 
     `;
@@ -163,35 +161,39 @@ function installScrollStyles() {
 
 function setupNavigation() {
 
-    const items =
+    const buttons =
         document.querySelectorAll(
             ".nav-item"
         );
 
 
-    items.forEach(
-        item => {
+    buttons.forEach(
+        function (button) {
 
-            item.addEventListener(
+            button.addEventListener(
                 "click",
                 function () {
 
-                    items.forEach(
-                        nav => {
-                            nav.classList.remove(
+                    buttons.forEach(
+                        function (item) {
+
+                            item.classList.remove(
                                 "active"
                             );
+
                         }
                     );
 
 
-                    item.classList.add(
+                    button.classList.add(
                         "active"
                     );
 
 
                     const target =
-                        $(item.dataset.target);
+                        $(
+                            button.dataset.target
+                        );
 
 
                     if (target) {
@@ -216,7 +218,7 @@ function setupNavigation() {
 
 
 /* =========================================================
-   UPLOAD SETUP
+   FILE UPLOAD
 ========================================================= */
 
 function setupUpload() {
@@ -225,14 +227,10 @@ function setupUpload() {
         $("dgrFile");
 
 
-    const dropZone =
-        $("dropZone");
-
-
     if (!input) {
 
         console.error(
-            "dgrFile input was not found."
+            "The #dgrFile input is missing."
         );
 
         return;
@@ -245,12 +243,13 @@ function setupUpload() {
         function (event) {
 
             const file =
-                event.target.files?.[0];
+                event.target.files &&
+                event.target.files[0];
 
 
             if (file) {
 
-                processFile(
+                processDGR(
                     file
                 );
 
@@ -258,6 +257,10 @@ function setupUpload() {
 
         }
     );
+
+
+    const dropZone =
+        $("dropZone");
 
 
     if (!dropZone) {
@@ -313,12 +316,13 @@ function setupUpload() {
 
 
             const file =
-                event.dataTransfer?.files?.[0];
+                event.dataTransfer.files &&
+                event.dataTransfer.files[0];
 
 
             if (file) {
 
-                processFile(
+                processDGR(
                     file
                 );
 
@@ -331,10 +335,10 @@ function setupUpload() {
 
 
 /* =========================================================
-   REMOVE FILE
+   REMOVE
 ========================================================= */
 
-function setupRemoveButton() {
+function setupRemove() {
 
     const button =
         $("removeFile");
@@ -354,10 +358,10 @@ function setupRemoveButton() {
 
 
 /* =========================================================
-   PROCESS FILE
+   PROCESS DGR
 ========================================================= */
 
-function processFile(
+function processDGR(
     file
 ) {
 
@@ -373,7 +377,7 @@ function processFile(
     ) {
 
         alert(
-            "Please upload an Excel workbook (.xlsx/.xls) or CSV file."
+            "Please upload a valid Excel workbook (.xlsx/.xls) or CSV file."
         );
 
         return;
@@ -386,7 +390,7 @@ function processFile(
     ) {
 
         alert(
-            "SheetJS is not loaded. Check the XLSX script in index.html."
+            "SheetJS is not loaded. Check index.html."
         );
 
         return;
@@ -430,6 +434,7 @@ function processFile(
 
 
                 if (
+                    !workbook ||
                     !workbook.SheetNames ||
                     !workbook.SheetNames.length
                 ) {
@@ -441,7 +446,7 @@ function processFile(
                 }
 
 
-                updateFileInformation(
+                updateFileUI(
                     file
                 );
 
@@ -461,7 +466,7 @@ function processFile(
             catch (error) {
 
                 console.error(
-                    "DGR processing error:",
+                    "DGR loading error:",
                     error
                 );
 
@@ -499,10 +504,10 @@ function processFile(
 
 
 /* =========================================================
-   FILE INFORMATION
+   FILE UI
 ========================================================= */
 
-function updateFileInformation(
+function updateFileUI(
     file
 ) {
 
@@ -579,17 +584,19 @@ function renderSheetBadges() {
         "";
 
 
-    const requiredSheets = [
+    const required = [
+
         "Dashboard",
         "Annual_KPI",
         "Daily_KPI",
         "PA",
         "Curtailment records"
+
     ];
 
 
-    requiredSheets.forEach(
-        name => {
+    required.forEach(
+        function (sheetName) {
 
             const badge =
                 document.createElement(
@@ -603,20 +610,25 @@ function renderSheetBadges() {
 
             const exists =
                 workbook.SheetNames.some(
-                    actual =>
-                        normalizeSheet(
-                            actual
-                        ) ===
-                        normalizeSheet(
-                            name
-                        )
+                    function (actual) {
+
+                        return (
+                            normalizeSheet(
+                                actual
+                            ) ===
+                            normalizeSheet(
+                                sheetName
+                            )
+                        );
+
+                    }
                 );
 
 
             badge.textContent =
                 exists
-                    ? `${name} ✓`
-                    : `${name} — missing`;
+                    ? `${sheetName} ✓`
+                    : `${sheetName} — missing`;
 
 
             if (!exists) {
@@ -639,7 +651,7 @@ function renderSheetBadges() {
 
 
 /* =========================================================
-   NORMALIZE SHEET NAME
+   SHEET NORMALISATION
 ========================================================= */
 
 function normalizeSheet(
@@ -690,7 +702,7 @@ function getSheet(
     }
 
 
-    const normalized =
+    const wanted =
         normalizeSheet(
             requestedName
         );
@@ -698,10 +710,15 @@ function getSheet(
 
     const actual =
         workbook.SheetNames.find(
-            name =>
-                normalizeSheet(
-                    name
-                ) === normalized
+            function (sheetName) {
+
+                return (
+                    normalizeSheet(
+                        sheetName
+                    ) === wanted
+                );
+
+            }
         );
 
 
@@ -715,7 +732,7 @@ function getSheet(
 
 
 /* =========================================================
-   GET USED RANGE
+   USED RANGE
 ========================================================= */
 
 function getSheetRange(
@@ -740,28 +757,116 @@ function getSheetRange(
 
 
 /* =========================================================
-   READ CELL OBJECT
+   MATRIX
 ========================================================= */
 
-function getSheetCell(
-    sheet,
-    address
+function toMatrix(
+    sheet
 ) {
 
     if (!sheet) {
+        return [];
+    }
+
+
+    return XLSX.utils.sheet_to_json(
+        sheet,
+        {
+            header:
+                1,
+
+            raw:
+                true,
+
+            defval:
+                null,
+
+            blankrows:
+                false
+        }
+    );
+
+}
+
+
+/* =========================================================
+   COLUMN INDEX
+========================================================= */
+
+function columnIndex(
+    letter
+) {
+
+    let number =
+        0;
+
+
+    for (
+        const char of letter.toUpperCase()
+    ) {
+
+        number =
+            number * 26 +
+            char.charCodeAt(0) -
+            64;
+
+    }
+
+
+    return number - 1;
+
+}
+
+
+/* =========================================================
+   GET CELL FROM MATRIX ROW
+========================================================= */
+
+function getCell(
+    row,
+    column
+) {
+
+    if (!row) {
         return null;
     }
 
 
-    return sheet[address] || null;
+    return row[
+        columnIndex(
+            column
+        )
+    ];
+
+}
+
+
+/* =========================================================
+   GET WORKSHEET CELL
+========================================================= */
+
+function getWorksheetCell(
+    sheet,
+    address
+) {
+
+    if (
+        !sheet ||
+        !sheet[address]
+    ) {
+
+        return null;
+
+    }
+
+
+    return sheet[address];
 
 }
 
 
 /* =========================================================
    READ NUMERIC CELL
-
-   Uses cached formula result first.
 ========================================================= */
 
 function readNumericCell(
@@ -770,7 +875,7 @@ function readNumericCell(
 ) {
 
     const cell =
-        getSheetCell(
+        getWorksheetCell(
             sheet,
             address
         );
@@ -798,31 +903,14 @@ function readNumericCell(
         cell.w !== null
     ) {
 
-        const text =
-            String(
-                cell.w
-            )
-                .replace(
-                    /,/g,
-                    ""
-                )
-                .replace(
-                    /%/g,
-                    ""
-                )
-                .trim();
-
-
         const value =
-            Number(
-                text
+            parseNumber(
+                cell.w
             );
 
 
         if (
-            Number.isFinite(
-                value
-            )
+            value !== null
         ) {
 
             return value;
@@ -837,21 +925,9 @@ function readNumericCell(
         cell.v !== null
     ) {
 
-        const value =
-            Number(
-                cell.v
-            );
-
-
-        if (
-            Number.isFinite(
-                value
-            )
-        ) {
-
-            return value;
-
-        }
+        return parseNumber(
+            cell.v
+        );
 
     }
 
@@ -863,8 +939,6 @@ function readNumericCell(
 
 /* =========================================================
    READ DATE CELL
-
-   For formula-driven dates, .w is preferred.
 ========================================================= */
 
 function readDateCell(
@@ -873,7 +947,7 @@ function readDateCell(
 ) {
 
     const cell =
-        getSheetCell(
+        getWorksheetCell(
             sheet,
             address
         );
@@ -885,8 +959,9 @@ function readDateCell(
 
 
     /*
-       Displayed Excel value first.
-       This is useful for formula dates.
+       Prefer the displayed value because
+       formula-generated Excel dates may have
+       a useful cached .w value.
     */
 
     if (
@@ -904,9 +979,7 @@ function readDateCell(
 
 
         if (displayed) {
-
             return displayed;
-
         }
 
     }
@@ -917,17 +990,9 @@ function readDateCell(
         cell.v !== null
     ) {
 
-        const parsed =
-            parseDate(
-                cell.v
-            );
-
-
-        if (parsed) {
-
-            return parsed;
-
-        }
+        return parseDate(
+            cell.v
+        );
 
     }
 
@@ -979,12 +1044,14 @@ function parseNumber(
 
 
     let text =
-        String(
-            value
-        )
+        String(value)
             .trim()
             .replace(
                 /,/g,
+                ""
+            )
+            .replace(
+                /%/g,
                 ""
             );
 
@@ -994,17 +1061,17 @@ function parseNumber(
     }
 
 
-    text =
-        text.replace(
-            /%/g,
-            ""
-        );
+    if (
+        text.startsWith("#")
+    ) {
+
+        return null;
+
+    }
 
 
     const result =
-        Number(
-            text
-        );
+        Number(text);
 
 
     return Number.isFinite(
@@ -1017,7 +1084,7 @@ function parseNumber(
 
 
 /* =========================================================
-   CONVERT DECIMAL TO PERCENT
+   PERCENTAGE CONVERSION
 ========================================================= */
 
 function convertPercentage(
@@ -1035,9 +1102,7 @@ function convertPercentage(
 
 
     const number =
-        Number(
-            value
-        );
+        Number(value);
 
 
     if (
@@ -1052,19 +1117,17 @@ function convertPercentage(
 
 
     /*
-       Decimal Excel format:
-       0.7547 -> 75.47
-       0.0193 -> 1.93
-       1      -> 100
+       Decimal percentage:
+       0.842 -> 84.2
+       0.019 -> 1.9
+       1 -> 100
 
        Already percentage:
-       75.47 stays 75.47
+       84.2 -> 84.2
     */
 
     if (
-        Math.abs(
-            number
-        ) <= 1.5
+        Math.abs(number) <= 1.5
     ) {
 
         return number * 100;
@@ -1153,8 +1216,7 @@ function parseDate(
     const text =
         String(
             value
-        )
-            .trim();
+        ).trim();
 
 
     /*
@@ -1172,15 +1234,9 @@ function parseDate(
 
         const date =
             new Date(
-                Number(
-                    match[3]
-                ),
-                Number(
-                    match[2]
-                ) - 1,
-                Number(
-                    match[1]
-                )
+                Number(match[3]),
+                Number(match[2]) - 1,
+                Number(match[1])
             );
 
 
@@ -1270,10 +1326,10 @@ function parseDate(
 
 
     /*
-       Month name by itself.
+       Month only
     */
 
-    const monthsLong = [
+    const monthNames = [
         "january",
         "february",
         "march",
@@ -1289,19 +1345,19 @@ function parseDate(
     ];
 
 
-    const monthOnly =
-        monthsLong.indexOf(
+    const monthIndex =
+        monthNames.indexOf(
             text.toLowerCase()
         );
 
 
     if (
-        monthOnly >= 0
+        monthIndex >= 0
     ) {
 
         return new Date(
             2026,
-            monthOnly,
+            monthIndex,
             1
         );
 
@@ -1309,9 +1365,7 @@ function parseDate(
 
 
     const browserDate =
-        new Date(
-            text
-        );
+        new Date(text);
 
 
     return isNaN(
@@ -1324,242 +1378,21 @@ function parseDate(
 
 
 /* =========================================================
-   TIME PARSER
+   DATE FORMAT
 ========================================================= */
 
-function parseTimeMinutes(
+function formatShortDate(
     value
 ) {
 
-    if (
-        value === null ||
-        value === undefined ||
-        value === ""
-    ) {
-
-        return null;
-
-    }
-
-
-    /*
-       Date/time object
-    */
-
-    if (
+    const date =
         value instanceof Date
-    ) {
+            ? value
+            : parseDate(value);
 
-        if (
-            isNaN(
-                value.getTime()
-            )
-        ) {
 
-            return null;
-
-        }
-
-
-        return (
-            value.getHours() * 60 +
-            value.getMinutes()
-        );
-
-    }
-
-
-    /*
-       Excel time fraction
-    */
-
-    if (
-        typeof value === "number"
-    ) {
-
-        if (
-            value >= 0 &&
-            value < 1
-        ) {
-
-            return Math.round(
-                value * 1440
-            );
-
-        }
-
-
-        try {
-
-            const parsed =
-                XLSX.SSF.parse_date_code(
-                    value
-                );
-
-
-            if (parsed) {
-
-                return (
-                    parsed.H * 60 +
-                    parsed.M
-                );
-
-            }
-
-        }
-
-        catch (_) {}
-
-    }
-
-
-    const text =
-        String(
-            value
-        )
-            .trim();
-
-
-    const match =
-        text.match(
-            /^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?$/i
-        );
-
-
-    if (!match) {
-
-        return null;
-
-    }
-
-
-    let hours =
-        Number(
-            match[1]
-        );
-
-
-    const minutes =
-        Number(
-            match[2]
-        );
-
-
-    const ampm =
-        match[4];
-
-
-    if (ampm) {
-
-        const period =
-            ampm.toUpperCase();
-
-
-        if (
-            period === "PM" &&
-            hours < 12
-        ) {
-
-            hours += 12;
-
-        }
-
-
-        if (
-            period === "AM" &&
-            hours === 12
-        ) {
-
-            hours = 0;
-
-        }
-
-    }
-
-
-    if (
-        hours < 0 ||
-        hours > 23 ||
-        minutes < 0 ||
-        minutes > 59
-    ) {
-
-        return null;
-
-    }
-
-
-    return (
-        hours * 60 +
-        minutes
-    );
-
-}
-
-
-/* =========================================================
-   TIME FORMAT
-========================================================= */
-
-function minutesToTime(
-    minutes
-) {
-
-    const value =
-        Math.max(
-            0,
-            Math.min(
-                1439,
-                Math.round(
-                    minutes
-                )
-            )
-        );
-
-
-    const hours =
-        Math.floor(
-            value / 60
-        );
-
-
-    const mins =
-        value % 60;
-
-
-    return (
-        String(
-            hours
-        ).padStart(
-            2,
-            "0"
-        ) +
-        ":" +
-        String(
-            mins
-        ).padStart(
-            2,
-            "0"
-        )
-    );
-
-}
-
-
-/* =========================================================
-   DATE FORMATTING
-========================================================= */
-
-function formatDate(
-    date
-) {
-
-    if (
-        !(date instanceof Date)
-    ) {
-
-        return "";
-
+    if (!date) {
+        return "—";
     }
 
 
@@ -1578,15 +1411,17 @@ function formatDate(
 
 
 function formatFullDate(
-    date
+    value
 ) {
 
-    if (
-        !(date instanceof Date)
-    ) {
+    const date =
+        value instanceof Date
+            ? value
+            : parseDate(value);
 
-        return "";
 
+    if (!date) {
+        return "—";
     }
 
 
@@ -1640,7 +1475,241 @@ function dateKey(
 
 
 /* =========================================================
-   FORMAT NUMBER
+   TIME -> MINUTES
+========================================================= */
+
+function timeToMinutes(
+    value
+) {
+
+    if (
+        value === null ||
+        value === undefined ||
+        value === ""
+    ) {
+
+        return null;
+
+    }
+
+
+    /*
+       Excel time stored as Date
+    */
+
+    if (
+        value instanceof Date
+    ) {
+
+        if (
+            isNaN(
+                value.getTime()
+            )
+        ) {
+
+            return null;
+
+        }
+
+
+        return (
+            value.getHours() * 60 +
+            value.getMinutes()
+        );
+
+    }
+
+
+    /*
+       Excel time stored as fraction
+    */
+
+    if (
+        typeof value === "number"
+    ) {
+
+        if (
+            value >= 0 &&
+            value < 1
+        ) {
+
+            return Math.round(
+                value * 1440
+            );
+
+        }
+
+
+        try {
+
+            const parsed =
+                XLSX.SSF.parse_date_code(
+                    value
+                );
+
+
+            if (
+                parsed
+            ) {
+
+                return (
+                    parsed.H * 60 +
+                    parsed.M
+                );
+
+            }
+
+        }
+
+        catch (_) {}
+
+    }
+
+
+    const text =
+        String(
+            value
+        )
+        .trim();
+
+
+    const match =
+        text.match(
+            /^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?$/i
+        );
+
+
+    if (!match) {
+        return null;
+    }
+
+
+    let hours =
+        Number(
+            match[1]
+        );
+
+
+    const minutes =
+        Number(
+            match[2]
+        );
+
+
+    const period =
+        match[4]
+            ? match[4].toUpperCase()
+            : null;
+
+
+    if (
+        period === "PM" &&
+        hours < 12
+    ) {
+
+        hours += 12;
+
+    }
+
+
+    if (
+        period === "AM" &&
+        hours === 12
+    ) {
+
+        hours = 0;
+
+    }
+
+
+    if (
+        hours < 0 ||
+        hours > 23 ||
+        minutes < 0 ||
+        minutes > 59
+    ) {
+
+        return null;
+
+    }
+
+
+    return (
+        hours * 60 +
+        minutes
+    );
+
+}
+
+
+/* =========================================================
+   MINUTES -> TIME
+========================================================= */
+
+function minutesToTime(
+    minutes
+) {
+
+    let value =
+        Number(
+            minutes
+        );
+
+
+    if (
+        !Number.isFinite(
+            value
+        )
+    ) {
+
+        return "—";
+
+    }
+
+
+    value =
+        Math.max(
+            0,
+            Math.min(
+                1439,
+                Math.round(
+                    value
+                )
+            )
+        );
+
+
+    const hour =
+        Math.floor(
+            value / 60
+        );
+
+
+    const minute =
+        value % 60;
+
+
+    return (
+        String(
+            hour
+        ).padStart(
+            2,
+            "0"
+        ) +
+        ":" +
+        String(
+            minute
+        ).padStart(
+            2,
+            "0"
+        )
+    );
+
+}
+
+
+/* =========================================================
+   NUMBER FORMAT
 ========================================================= */
 
 function formatNumber(
@@ -1677,7 +1746,7 @@ function formatNumber(
 
 
 /* =========================================================
-   SET TEXT
+   TEXT
 ========================================================= */
 
 function setText(
@@ -1716,7 +1785,7 @@ function setStatus(
 
 
 /* =========================================================
-   SHOW / HIDE
+   SHOW / HIDE ANALYTICS
 ========================================================= */
 
 function hideAnalytics() {
@@ -1728,22 +1797,22 @@ function hideAnalytics() {
         "curtailmentSection",
         "energySection"
     ]
-        .forEach(
-            id => {
+    .forEach(
+        function (id) {
 
-                const section =
-                    $(id);
+            const section =
+                $(id);
 
 
-                if (section) {
+            if (section) {
 
-                    section.style.display =
-                        "none";
-
-                }
+                section.style.display =
+                    "none";
 
             }
-        );
+
+        }
+    );
 
 }
 
@@ -1757,22 +1826,22 @@ function showAnalytics() {
         "curtailmentSection",
         "energySection"
     ]
-        .forEach(
-            id => {
+    .forEach(
+        function (id) {
 
-                const section =
-                    $(id);
+            const section =
+                $(id);
 
 
-                if (section) {
+            if (section) {
 
-                    section.style.display =
-                        "";
-
-                }
+                section.style.display =
+                    "";
 
             }
-        );
+
+        }
+    );
 
 
     $("emptyState")
@@ -1785,7 +1854,7 @@ function showAnalytics() {
 
 
 /* =========================================================
-   DESTROY ONE CHART
+   DESTROY CHART
 ========================================================= */
 
 function destroyChart(
@@ -1804,15 +1873,7 @@ function destroyChart(
 
         }
 
-        catch (error) {
-
-            console.warn(
-                "Could not destroy chart:",
-                id,
-                error
-            );
-
-        }
+        catch (_) {}
 
     }
 
@@ -1832,9 +1893,15 @@ function destroyAllCharts() {
     Object.keys(
         charts
     )
-        .forEach(
-            destroyChart
-        );
+    .forEach(
+        function (id) {
+
+            destroyChart(
+                id
+            );
+
+        }
+    );
 
 }
 
@@ -1853,27 +1920,27 @@ function removeDynamicCards() {
         "curtailmentTableCard",
         "curtailmentGanttCard"
     ]
-        .forEach(
-            id => {
+    .forEach(
+        function (id) {
 
-                const element =
-                    $(id);
+            const element =
+                $(id);
 
 
-                if (element) {
+            if (element) {
 
-                    element.remove();
-
-                }
+                element.remove();
 
             }
-        );
+
+        }
+    );
 
 }
 
 
 /* =========================================================
-   CREATE SCROLL WRAPPER
+   SCROLLABLE CHART WRAPPER
 ========================================================= */
 
 function makeChartScrollable(
@@ -1899,37 +1966,6 @@ function makeChartScrollable(
         parent.querySelector(
             ".dgr-scroll-wrapper"
         );
-
-
-    /*
-       Remove accidental old wrappers
-       if there are more than one.
-    */
-
-    const wrappers =
-        parent.querySelectorAll(
-            ".dgr-scroll-wrapper"
-        );
-
-
-    if (
-        wrappers.length > 1
-    ) {
-
-        for (
-            let i = 1;
-            i < wrappers.length;
-            i++
-        ) {
-
-            wrappers[i].parentNode
-                ?.removeChild(
-                    wrappers[i]
-                );
-
-        }
-
-    }
 
 
     if (!wrapper) {
@@ -1965,7 +2001,8 @@ function makeChartScrollable(
     const finalWidth =
         Math.max(
             visibleWidth,
-            desiredWidth || visibleWidth
+            desiredWidth ||
+                visibleWidth
         );
 
 
@@ -2010,6 +2047,10 @@ function makeChartScrollable(
         "100%";
 
 
+    canvas.style.display =
+        "block";
+
+
     return wrapper;
 
 }
@@ -2017,7 +2058,7 @@ function makeChartScrollable(
 
 /* =========================================================
    DAILY KPI READER
-   IMPORTANT FIX FOR FORMULA DATES
+   Uses Daily_KPI B / I / S / V / AD
 ========================================================= */
 
 function readDailyKPI() {
@@ -2029,13 +2070,7 @@ function readDailyKPI() {
 
 
     if (!sheet) {
-
-        console.warn(
-            "Daily_KPI sheet not found."
-        );
-
         return [];
-
     }
 
 
@@ -2050,14 +2085,14 @@ function readDailyKPI() {
     }
 
 
-    const rows = [];
+    const records = [];
 
-    let previousDate = null;
+    let previousDate =
+        null;
 
 
     /*
-       Row 4 = headers
-       Row 5 = first data row
+       First expected data row = Excel row 5.
     */
 
     for (
@@ -2078,9 +2113,7 @@ function readDailyKPI() {
 
 
         /*
-           If B contains a formula which
-           isn't evaluated by SheetJS,
-           continue the daily sequence.
+           Formula-driven date fallback.
         */
 
         if (
@@ -2107,8 +2140,9 @@ function readDailyKPI() {
 
 
         /*
-           Protect against a malformed
-           repeated date.
+           Some Excel formula dates can be
+           cached incorrectly/repeatedly.
+           Reconstruct the daily sequence.
         */
 
         if (
@@ -2123,17 +2157,10 @@ function readDailyKPI() {
                 ]?.f;
 
 
-            /*
-               If the row uses a sequential
-               formula such as =B5+1,
-               force sequential dates.
-            */
-
             if (
-                formula &&
-                /B\d+\s*\+\s*1/i.test(
-                    formula
-                )
+                formula ||
+                date.getTime() ===
+                    previousDate.getTime()
             ) {
 
                 date =
@@ -2185,25 +2212,7 @@ function readDailyKPI() {
             );
 
 
-        const pa =
-            convertPercentage(
-                paRaw
-            );
-
-
-        const pr =
-            convertPercentage(
-                prRaw
-            );
-
-
-        const loss =
-            convertPercentage(
-                lossRaw
-            );
-
-
-        rows.push({
+        records.push({
 
             row:
                 excelRow,
@@ -2213,11 +2222,20 @@ function readDailyKPI() {
             hours:
                 hoursRaw,
 
-            pa,
+            pa:
+                convertPercentage(
+                    paRaw
+                ),
 
-            pr,
+            pr:
+                convertPercentage(
+                    prRaw
+                ),
 
-            loss
+            loss:
+                convertPercentage(
+                    lossRaw
+                )
 
         });
 
@@ -2225,30 +2243,22 @@ function readDailyKPI() {
 
 
     /*
-       Remove exact duplicate dates while
-       retaining valid rows.
-
-       This also protects against formula
-       recalculation anomalies.
+       Remove duplicate dates while keeping
+       the row with the most useful data.
     */
 
     const unique =
         new Map();
 
 
-    rows.forEach(
-        row => {
+    records.forEach(
+        function (record) {
 
             const key =
                 dateKey(
-                    row.date
+                    record.date
                 );
 
-
-            /*
-               Prefer a row that contains
-               actual values.
-            */
 
             if (
                 !unique.has(key)
@@ -2256,60 +2266,57 @@ function readDailyKPI() {
 
                 unique.set(
                     key,
-                    row
+                    record
                 );
+
+                return;
 
             }
 
-            else {
 
-                const existing =
-                    unique.get(
-                        key
-                    );
+            const existing =
+                unique.get(key);
 
 
-                const existingScore =
-                    Number(
-                        existing.hours !== null
-                    ) +
-                    Number(
-                        existing.pa !== null
-                    ) +
-                    Number(
-                        existing.pr !== null
-                    ) +
-                    Number(
-                        existing.loss !== null
-                    );
+            const existingScore =
+                Number(
+                    existing.hours !== null
+                ) +
+                Number(
+                    existing.pa !== null
+                ) +
+                Number(
+                    existing.pr !== null
+                ) +
+                Number(
+                    existing.loss !== null
+                );
 
 
-                const newScore =
-                    Number(
-                        row.hours !== null
-                    ) +
-                    Number(
-                        row.pa !== null
-                    ) +
-                    Number(
-                        row.pr !== null
-                    ) +
-                    Number(
-                        row.loss !== null
-                    );
+            const currentScore =
+                Number(
+                    record.hours !== null
+                ) +
+                Number(
+                    record.pa !== null
+                ) +
+                Number(
+                    record.pr !== null
+                ) +
+                Number(
+                    record.loss !== null
+                );
 
 
-                if (
-                    newScore >
-                    existingScore
-                ) {
+            if (
+                currentScore >
+                existingScore
+            ) {
 
-                    unique.set(
-                        key,
-                        row
-                    );
-
-                }
+                unique.set(
+                    key,
+                    record
+                );
 
             }
 
@@ -2317,54 +2324,14 @@ function readDailyKPI() {
     );
 
 
-    const result =
-        Array.from(
-            unique.values()
-        )
-        .sort(
-            (a, b) =>
-                a.date -
-                b.date
-        );
-
-
-    console.log(
-        "Daily KPI records:",
-        result
+    return Array.from(
+        unique.values()
+    )
+    .sort(
+        (a, b) =>
+            a.date -
+            b.date
     );
-
-
-    console.log(
-        "PA values:",
-        result.map(
-            row => ({
-                date:
-                    formatFullDate(
-                        row.date
-                    ),
-                pa:
-                    row.pa
-            })
-        )
-    );
-
-
-    console.log(
-        "System Loss values:",
-        result.map(
-            row => ({
-                date:
-                    formatFullDate(
-                        row.date
-                    ),
-                loss:
-                    row.loss
-            })
-        )
-    );
-
-
-    return result;
 
 }
 
@@ -2377,210 +2344,43 @@ function makeDailyLabels(
     rows
 ) {
 
-    /*
-       Example for July:
-       2 4 6 8 10 12 14...
-
-       Dates themselves remain daily.
-       Only visible labels are reduced.
-    */
-
-    if (
-        rows.length >= 20 &&
-        rows.length <= 35
-    ) {
-
-        return rows.map(
-            row => {
-
-                const day =
-                    row.date.getDate();
-
-
-                return (
-                    day % 2 === 0
-                        ? String(
-                            day
-                        )
-                        : ""
-                );
-
-            }
-        );
-
+    if (!rows.length) {
+        return [];
     }
 
 
     return rows.map(
-        row =>
-            formatDate(
-                row.date
-            )
-    );
+        function (record) {
 
-}
+            const day =
+                record.date.getDate();
 
 
-/* =========================================================
-   DAILY CHARTS
-========================================================= */
+            /*
+               Approx. monthly dataset:
+               display 2,4,6,8...
+               while preserving all data points.
+            */
 
-function renderDailyCharts(
-    rows
-) {
+            if (
+                rows.length >= 20 &&
+                rows.length <= 35
+            ) {
 
-    if (!rows.length) {
-        return;
-    }
+                return (
+                    day % 2 === 0
+                        ? String(day)
+                        : ""
+                );
 
-
-    const labels =
-        makeDailyLabels(
-            rows
-        );
-
-
-    /*
-       PA
-    */
-
-    renderPAPercentage(
-        rows
-    );
+            }
 
 
-    /*
-       Dashboard and Performance PR
-    */
+            return formatShortDate(
+                record.date
+            );
 
-    createDailyLineChart(
-        "prChart",
-        labels,
-        rows.map(
-            row => row.pr
-        ),
-        "Performance Ratio",
-        "PR (%)",
-        {
-            min:
-                0,
-
-            max:
-                100
         }
-    );
-
-
-    createDailyLineChart(
-        "dashboardPRChart",
-        labels,
-        rows.map(
-            row => row.pr
-        ),
-        "Performance Ratio",
-        "PR (%)",
-        {
-            min:
-                0,
-
-            max:
-                100
-        }
-    );
-
-
-    /*
-       Operating Hours
-    */
-
-    createDailyLineChart(
-        "hoursChart",
-        labels,
-        rows.map(
-            row => row.hours
-        ),
-        "Operating Hours",
-        "Operating Hours",
-        {
-            beginAtZero:
-                true
-        }
-    );
-
-
-    /*
-       System Loss
-    */
-
-    createDailyLineChart(
-        "lossChart",
-        labels,
-        rows.map(
-            row => row.loss
-        ),
-        "System Loss",
-        "System Loss (%)",
-        {
-            beginAtZero:
-                true
-        }
-    );
-
-
-    createDailyLineChart(
-        "dashboardLossChart",
-        labels,
-        rows.map(
-            row => row.loss
-        ),
-        "System Loss",
-        "System Loss (%)",
-        {
-            beginAtZero:
-                true
-        }
-    );
-
-
-    /*
-       Latest daily KPI card.
-    */
-
-    const latest =
-        rows[
-            rows.length - 1
-        ];
-
-
-    setText(
-        "dashboardPA",
-        latest.pa === null
-            ? "—"
-            : `${latest.pa.toFixed(2)}%`
-    );
-
-
-    setText(
-        "dashboardPR",
-        latest.pr === null
-            ? "—"
-            : `${latest.pr.toFixed(2)}%`
-    );
-
-
-    setText(
-        "dashboardLoss",
-        latest.loss === null
-            ? "—"
-            : `${latest.loss.toFixed(2)}%`
-    );
-
-
-    setText(
-        "dashboardHours",
-        latest.hours === null
-            ? "—"
-            : `${latest.hours.toFixed(2)} h`
     );
 
 }
@@ -2613,13 +2413,9 @@ function createDailyLineChart(
     );
 
 
-    const parent =
-        canvas.parentElement;
-
-
     const width =
         Math.max(
-            parent?.clientWidth || 700,
+            700,
             labels.length * 80
         );
 
@@ -2632,10 +2428,13 @@ function createDailyLineChart(
 
     const yValues =
         values.filter(
-            value =>
-                Number.isFinite(
+            function (value) {
+
+                return Number.isFinite(
                     value
-                )
+                );
+
+            }
         );
 
 
@@ -2722,7 +2521,7 @@ function createDailyLineChart(
                                 6,
 
                             tension:
-                                0.2,
+                                0.20,
 
                             fill:
                                 false
@@ -2845,6 +2644,173 @@ function createDailyLineChart(
 
 
 /* =========================================================
+   DAILY CHARTS
+   PR / SYSTEM LOSS / OPERATING HOURS
+========================================================= */
+
+function renderDailyCharts(
+    records
+) {
+
+    if (!records.length) {
+        return;
+    }
+
+
+    const labels =
+        makeDailyLabels(
+            records
+        );
+
+
+    /*
+       PR
+    */
+
+    createDailyLineChart(
+        "prChart",
+        labels,
+        records.map(
+            function (record) {
+                return record.pr;
+            }
+        ),
+        "Performance Ratio",
+        "PR (%)",
+        {
+            min:
+                0,
+
+            max:
+                100
+        }
+    );
+
+
+    createDailyLineChart(
+        "dashboardPRChart",
+        labels,
+        records.map(
+            function (record) {
+                return record.pr;
+            }
+        ),
+        "Performance Ratio",
+        "PR (%)",
+        {
+            min:
+                0,
+
+            max:
+                100
+        }
+    );
+
+
+    /*
+       Operating Hours
+    */
+
+    createDailyLineChart(
+        "hoursChart",
+        labels,
+        records.map(
+            function (record) {
+                return record.hours;
+            }
+        ),
+        "Operating Hours",
+        "Operating Hours",
+        {
+            beginAtZero:
+                true
+        }
+    );
+
+
+    /*
+       System Loss %
+    */
+
+    createDailyLineChart(
+        "lossChart",
+        labels,
+        records.map(
+            function (record) {
+                return record.loss;
+            }
+        ),
+        "System Loss",
+        "System Loss (%)",
+        {
+            beginAtZero:
+                true
+        }
+    );
+
+
+    createDailyLineChart(
+        "dashboardLossChart",
+        labels,
+        records.map(
+            function (record) {
+                return record.loss;
+            }
+        ),
+        "System Loss",
+        "System Loss (%)",
+        {
+            beginAtZero:
+                true
+        }
+    );
+
+
+    /*
+       Latest daily KPI card.
+    */
+
+    const latest =
+        records[
+            records.length - 1
+        ];
+
+
+    setText(
+        "dashboardPA",
+        latest.pa === null
+            ? "—"
+            : `${latest.pa.toFixed(2)}%`
+    );
+
+
+    setText(
+        "dashboardPR",
+        latest.pr === null
+            ? "—"
+            : `${latest.pr.toFixed(2)}%`
+    );
+
+
+    setText(
+        "dashboardLoss",
+        latest.loss === null
+            ? "—"
+            : `${latest.loss.toFixed(2)}%`
+    );
+
+
+    setText(
+        "dashboardHours",
+        latest.hours === null
+            ? "—"
+            : `${latest.hours.toFixed(2)} h`
+    );
+
+}
+
+
+/* =========================================================
    PA PERCENTAGE CARD
 ========================================================= */
 
@@ -2914,17 +2880,17 @@ function ensurePAPercentageCard() {
         `;
 
 
-        const gantt =
+        const firstCard =
             section.querySelector(
                 ".chart-card.full-card"
             );
 
 
-        if (gantt) {
+        if (firstCard) {
 
             section.insertBefore(
                 card,
-                gantt
+                firstCard
             );
 
         }
@@ -2946,11 +2912,13 @@ function ensurePAPercentageCard() {
 
 
 /* =========================================================
-   PA PERCENTAGE GRAPH
+   PA PERCENTAGE CHART
+   80% -> 100%
+   5% intervals
 ========================================================= */
 
 function renderPAPercentage(
-    rows
+    records
 ) {
 
     const card =
@@ -2978,14 +2946,14 @@ function renderPAPercentage(
 
     const labels =
         makeDailyLabels(
-            rows
+            records
         );
 
 
     const width =
         Math.max(
-            card.clientWidth || 700,
-            rows.length * 80
+            700,
+            records.length * 80
         );
 
 
@@ -3017,9 +2985,10 @@ function renderPAPercentage(
                                 "Plant Availability",
 
                             data:
-                                rows.map(
-                                    row =>
-                                        row.pa
+                                records.map(
+                                    function (record) {
+                                        return record.pa;
+                                    }
                                 ),
 
                             borderWidth:
@@ -3032,7 +3001,7 @@ function renderPAPercentage(
                                 6,
 
                             tension:
-                                0.2,
+                                0.20,
 
                             fill:
                                 false
@@ -3090,6 +3059,16 @@ function renderPAPercentage(
                                 minRotation:
                                     0
 
+                            },
+
+                            title: {
+
+                                display:
+                                    true,
+
+                                text:
+                                    "Date"
+
                             }
 
                         },
@@ -3119,8 +3098,14 @@ function renderPAPercentage(
                                     5,
 
                                 callback:
-                                    value =>
-                                        `${value}%`
+                                    function (value) {
+
+                                        return (
+                                            value +
+                                            "%"
+                                        );
+
+                                    }
 
                             }
 
@@ -3137,7 +3122,7 @@ function renderPAPercentage(
 
 
 /* =========================================================
-   PLANT UNAVAILABILITY
+   PLANT UNAVAILABILITY DATA
 ========================================================= */
 
 function readPlantUnavailability() {
@@ -3201,10 +3186,24 @@ function readPlantUnavailability() {
 
         if (
             issue === null ||
-            issue === undefined ||
+            issue === undefined
+        ) {
+
+            continue;
+
+        }
+
+
+        const name =
             String(
                 issue
-            ).trim() === ""
+            )
+            .trim();
+
+
+        if (
+            !name ||
+            name === "#REF!"
         ) {
 
             continue;
@@ -3239,9 +3238,7 @@ function readPlantUnavailability() {
         records.push({
 
             issue:
-                String(
-                    issue
-                ).trim(),
+                name,
 
             start,
 
@@ -3286,7 +3283,7 @@ function renderPlantUnavailability() {
 
         showCanvasMessage(
             canvas,
-            "No Plant Unavailability records found."
+            "No plant unavailability records found."
         );
 
         return;
@@ -3294,69 +3291,63 @@ function renderPlantUnavailability() {
     }
 
 
-    const parent =
-        canvas.parentElement;
-
-
-    const width =
-        Math.max(
-            parent?.clientWidth || 800,
-            2300
-        );
-
-
-    makeChartScrollable(
+    prepareScrollableCanvas(
         canvas,
-        width
+        2304
     );
 
 
     const labels =
         records.map(
-            record =>
-                record.issue
+            function (record) {
+                return record.issue;
+            }
         );
 
 
     const datasets =
         records.map(
-            record => ({
+            function (record) {
 
-                label:
-                    record.issue,
+                return {
 
-                data: [
+                    label:
+                        record.issue,
 
-                    {
+                    data: [
 
-                        x: [
-                            record.start,
-                            record.end
-                        ],
+                        {
 
-                        y:
-                            record.issue
+                            x: [
+                                record.start,
+                                record.end
+                            ],
 
-                    }
+                            y:
+                                record.issue
 
-                ],
+                        }
 
-                backgroundColor:
-                    "rgba(39,165,173,0.72)",
+                    ],
 
-                borderColor:
-                    "#27A5AD",
+                    backgroundColor:
+                        "rgba(39,165,173,0.72)",
 
-                borderWidth:
-                    1,
+                    borderColor:
+                        "#27A5AD",
 
-                borderRadius:
-                    4,
+                    borderWidth:
+                        1,
 
-                barThickness:
-                    22
+                    borderRadius:
+                        4,
 
-            })
+                    barThickness:
+                        22
+
+                };
+
+            }
         );
 
 
@@ -3412,16 +3403,25 @@ function renderPlantUnavailability() {
                             callbacks: {
 
                                 title:
-                                    context =>
-                                        records[
+                                    function (context) {
+
+                                        const index =
                                             context[0]
-                                                .dataIndex
-                                        ]?.issue ||
-                                        "",
+                                                ?.dataIndex;
+
+
+                                        return (
+                                            records[
+                                                index
+                                            ]?.issue ||
+                                            ""
+                                        );
+
+                                    },
 
 
                                 label:
-                                    context => {
+                                    function (context) {
 
                                         const item =
                                             records[
@@ -3430,13 +3430,21 @@ function renderPlantUnavailability() {
                                             ];
 
 
+                                        if (!item) {
+                                            return "";
+                                        }
+
+
                                         return [
 
                                             `Start: ${minutesToTime(item.start)}`,
 
                                             `End: ${minutesToTime(item.end)}`,
 
-                                            `Duration: ${item.end - item.start} min`
+                                            `Duration: ${
+                                                item.end -
+                                                item.start
+                                            } min`
 
                                         ];
 
@@ -3478,10 +3486,20 @@ function renderPlantUnavailability() {
                                     30,
 
                                 callback:
-                                    value =>
-                                        minutesToTime(
+                                    function (value) {
+
+                                        return minutesToTime(
                                             value
-                                        )
+                                        );
+
+                                    }
+
+                            },
+
+                            grid: {
+
+                                color:
+                                    "rgba(23,37,42,0.08)"
 
                             }
 
@@ -3489,9 +3507,6 @@ function renderPlantUnavailability() {
 
 
                         y: {
-
-                            type:
-                                "category",
 
                             labels,
 
@@ -3530,112 +3545,103 @@ function renderPlantUnavailability() {
 
 function readBreakdownTimeline() {
 
-    const sheet =
-        getSheet(
-            "PA"
+    const rows =
+        toMatrix(
+            getSheet(
+                "PA"
+            )
         );
 
 
-    if (!sheet) {
-        return [];
-    }
-
-
-    const range =
-        getSheetRange(
-            sheet
-        );
-
-
-    if (!range) {
-        return [];
-    }
-
-
-    const byDate =
+    const grouped =
         new Map();
 
 
-    for (
-        let r = 4;
-        r <= range.e.r;
-        r++
-    ) {
+    rows.forEach(
+        function (row) {
 
-        const row =
-            r + 1;
-
-
-        const date =
-            readDateCell(
-                sheet,
-                `B${row}`
-            );
+            const date =
+                parseDate(
+                    getCell(
+                        row,
+                        "B"
+                    )
+                );
 
 
-        const minutes =
-            readNumericCell(
-                sheet,
-                `AG${row}`
-            );
+            const minutes =
+                parseNumber(
+                    getCell(
+                        row,
+                        "AG"
+                    )
+                );
 
 
-        if (
-            !date ||
-            minutes === null
-        ) {
+            if (
+                !date ||
+                minutes === null
+            ) {
 
-            continue;
+                return;
 
-        }
-
-
-        const key =
-            dateKey(
-                date
-            );
+            }
 
 
-        if (
-            !byDate.has(
+            const key =
+                dateKey(
+                    date
+                );
+
+
+            if (
+                !grouped.has(
+                    key
+                )
+            ) {
+
+                grouped.set(
+                    key,
+                    {
+
+                        date:
+                            new Date(
+                                date.getFullYear(),
+                                date.getMonth(),
+                                date.getDate()
+                            ),
+
+                        minutes:
+                            0
+
+                    }
+                );
+
+            }
+
+
+            grouped.get(
                 key
-            )
-        ) {
-
-            byDate.set(
-                key,
-                {
-
-                    date:
-                        new Date(
-                            date
-                        ),
-
-                    minutes:
-                        0
-
-                }
-            );
+            ).minutes +=
+                minutes;
 
         }
-
-
-        byDate.get(
-            key
-        ).minutes +=
-            minutes;
-
-    }
+    );
 
 
     return Array.from(
-        byDate.values()
+        grouped.values()
     )
-        .sort(
-            (a, b) =>
+    .sort(
+        function (a, b) {
+
+            return (
                 a.date -
                 b.date
-        );
+            );
+
+        }
+    );
 
 }
 
@@ -3710,28 +3716,9 @@ function ensureBreakdownCard() {
         `;
 
 
-        const first =
-            section.querySelector(
-                ".chart-card.full-card"
-            );
-
-
-        if (first) {
-
-            first.insertAdjacentElement(
-                "afterend",
-                card
-            );
-
-        }
-
-        else {
-
-            section.appendChild(
-                card
-            );
-
-        }
+        section.appendChild(
+            card
+        );
 
     }
 
@@ -3778,7 +3765,7 @@ function renderBreakdownTimeline() {
 
         showCanvasMessage(
             canvas,
-            "No breakdown records found."
+            "No breakdown timeline records found."
         );
 
         return;
@@ -3800,10 +3787,11 @@ function renderBreakdownTimeline() {
 
                     labels:
                         records.map(
-                            record =>
-                                shortDate(
+                            function (record) {
+                                return formatShortDate(
                                     record.date
-                                )
+                                );
+                            }
                         ),
 
                     datasets: [
@@ -3811,19 +3799,20 @@ function renderBreakdownTimeline() {
                         {
 
                             label:
-                                "Breakdown Time",
+                                "Breakdown Time (min)",
 
                             data:
                                 records.map(
-                                    record =>
-                                        record.minutes
+                                    function (record) {
+                                        return record.minutes;
+                                    }
                                 ),
 
                             borderWidth:
                                 1,
 
                             borderRadius:
-                                3
+                                4
 
                         }
 
@@ -3896,6 +3885,16 @@ function renderBreakdownTimeline() {
                                 display:
                                     false
 
+                            },
+
+                            title: {
+
+                                display:
+                                    true,
+
+                                text:
+                                    "Date"
+
                             }
 
                         }
@@ -3911,123 +3910,114 @@ function renderBreakdownTimeline() {
 
 
 /* =========================================================
-   SYSTEM LOSS MWh DATA
+   SYSTEM LOSS MWh
 ========================================================= */
 
 function readSystemLossMWh() {
 
-    const sheet =
-        getSheet(
-            "PA"
+    const rows =
+        toMatrix(
+            getSheet(
+                "PA"
+            )
         );
 
 
-    if (!sheet) {
-        return [];
-    }
-
-
-    const range =
-        getSheetRange(
-            sheet
-        );
-
-
-    if (!range) {
-        return [];
-    }
-
-
-    const byDate =
+    const grouped =
         new Map();
 
 
-    for (
-        let r = 4;
-        r <= range.e.r;
-        r++
-    ) {
+    rows.forEach(
+        function (row) {
 
-        const row =
-            r + 1;
-
-
-        const date =
-            readDateCell(
-                sheet,
-                `B${row}`
-            );
+            const date =
+                parseDate(
+                    getCell(
+                        row,
+                        "B"
+                    )
+                );
 
 
-        const loss =
-            readNumericCell(
-                sheet,
-                `AL${row}`
-            );
+            const loss =
+                parseNumber(
+                    getCell(
+                        row,
+                        "AL"
+                    )
+                );
 
 
-        if (
-            !date ||
-            loss === null
-        ) {
+            if (
+                !date ||
+                loss === null
+            ) {
 
-            continue;
+                return;
 
-        }
-
-
-        const key =
-            dateKey(
-                date
-            );
+            }
 
 
-        if (
-            !byDate.has(
+            const key =
+                dateKey(
+                    date
+                );
+
+
+            if (
+                !grouped.has(
+                    key
+                )
+            ) {
+
+                grouped.set(
+                    key,
+                    {
+
+                        date:
+                            new Date(
+                                date.getFullYear(),
+                                date.getMonth(),
+                                date.getDate()
+                            ),
+
+                        loss:
+                            0
+
+                    }
+                );
+
+            }
+
+
+            grouped.get(
                 key
-            )
-        ) {
-
-            byDate.set(
-                key,
-                {
-
-                    date:
-                        new Date(
-                            date
-                        ),
-
-                    loss:
-                        0
-
-                }
-            );
+            ).loss +=
+                loss;
 
         }
-
-
-        byDate.get(
-            key
-        ).loss +=
-            loss;
-
-    }
+    );
 
 
     return Array.from(
-        byDate.values()
+        grouped.values()
     )
-        .sort(
-            (a, b) =>
+    .sort(
+        function (a, b) {
+
+            return (
                 a.date -
                 b.date
-        );
+            );
+
+        }
+    );
 
 }
 
 
 /* =========================================================
-   SYSTEM LOSS MWh CARD
+   SYSTEM LOSS CARD
 ========================================================= */
 
 function ensureSystemLossCard() {
@@ -4076,7 +4066,7 @@ function ensureSystemLossCard() {
                     </h3>
 
                     <span>
-                        Same-date system loss combined · PA Column AL
+                        Same-date system losses combined · PA Column AL
                     </span>
 
                 </div>
@@ -4096,26 +4086,9 @@ function ensureSystemLossCard() {
         `;
 
 
-        const breakdown =
-            $("breakdownTimelineCard");
-
-
-        if (breakdown) {
-
-            breakdown.insertAdjacentElement(
-                "afterend",
-                card
-            );
-
-        }
-
-        else {
-
-            section.appendChild(
-                card
-            );
-
-        }
+        section.appendChild(
+            card
+        );
 
     }
 
@@ -4172,7 +4145,7 @@ function renderSystemLossMWh() {
 
     const width =
         Math.max(
-            card.clientWidth || 700,
+            700,
             records.length * 80
         );
 
@@ -4197,10 +4170,11 @@ function renderSystemLossMWh() {
 
                     labels:
                         records.map(
-                            record =>
-                                shortDate(
+                            function (record) {
+                                return formatShortDate(
                                     record.date
-                                )
+                                );
+                            }
                         ),
 
                     datasets: [
@@ -4212,8 +4186,9 @@ function renderSystemLossMWh() {
 
                             data:
                                 records.map(
-                                    record =>
-                                        record.loss
+                                    function (record) {
+                                        return record.loss;
+                                    }
                                 ),
 
                             borderWidth:
@@ -4275,6 +4250,16 @@ function renderSystemLossMWh() {
                                 minRotation:
                                     0
 
+                            },
+
+                            title: {
+
+                                display:
+                                    true,
+
+                                text:
+                                    "Date"
+
                             }
 
                         },
@@ -4313,126 +4298,406 @@ function renderSystemLossMWh() {
 
 function readCurtailment() {
 
-    const sheet =
-        getSheet(
-            "Curtailment records"
+    const rows =
+        toMatrix(
+            getSheet(
+                "Curtailment records"
+            )
         );
-
-
-    if (!sheet) {
-        return [];
-    }
-
-
-    const range =
-        getSheetRange(
-            sheet
-        );
-
-
-    if (!range) {
-        return [];
-    }
 
 
     const records = [];
 
 
-    for (
-        let r = 1;
-        r <= range.e.r;
-        r++
-    ) {
+    rows.forEach(
+        function (row) {
 
-        const row =
-            r + 1;
-
-
-        const date =
-            readDateCell(
-                sheet,
-                `C${row}`
-            );
+            const date =
+                parseDate(
+                    getCell(
+                        row,
+                        "C"
+                    )
+                );
 
 
-        const start =
-            parseTimeMinutes(
-                sheet[
-                    `H${row}`
-                ]?.v
-            );
+            const start =
+                timeToMinutes(
+                    getCell(
+                        row,
+                        "H"
+                    )
+                );
 
 
-        const end =
-            parseTimeMinutes(
-                sheet[
-                    `I${row}`
-                ]?.v
-            );
+            const end =
+                timeToMinutes(
+                    getCell(
+                        row,
+                        "I"
+                    )
+                );
 
 
-        const loss =
-            readNumericCell(
-                sheet,
-                `R${row}`
-            );
+            const loss =
+                parseNumber(
+                    getCell(
+                        row,
+                        "R"
+                    )
+                );
 
 
-        if (
-            !date ||
-            start === null ||
-            end === null
-        ) {
+            if (
+                !date ||
+                start === null ||
+                end === null
+            ) {
 
-            continue;
+                return;
+
+            }
+
+
+            let actualEnd =
+                end;
+
+
+            if (
+                actualEnd <
+                start
+            ) {
+
+                actualEnd +=
+                    1440;
+
+            }
+
+
+            records.push({
+
+                date,
+
+                key:
+                    dateKey(
+                        date
+                    ),
+
+                start,
+
+                end:
+                    actualEnd,
+
+                loss:
+                    loss === null
+                        ? 0
+                        : loss
+
+            });
 
         }
-
-
-        let finish =
-            end;
-
-
-        if (
-            finish < start
-        ) {
-
-            finish +=
-                1440;
-
-        }
-
-
-        records.push({
-
-            date,
-
-            key:
-                dateKey(
-                    date
-                ),
-
-            start,
-
-            end:
-                finish,
-
-            loss:
-                loss === null
-                    ? 0
-                    : loss
-
-        });
-
-    }
+    );
 
 
     return records
         .sort(
-            (a, b) =>
-                a.date - b.date ||
-                a.start - b.start
+            function (a, b) {
+
+                return (
+                    a.date - b.date ||
+                    a.start - b.start
+                );
+
+            }
         );
+
+}
+
+
+/* =========================================================
+   CURTAILMENT LOSS CHART
+========================================================= */
+
+function renderCurtailmentLossChart(
+    records
+) {
+
+    const canvas =
+        $("curtailmentChart");
+
+
+    if (!canvas) {
+        return;
+    }
+
+
+    destroyChart(
+        "curtailmentChart"
+    );
+
+
+    if (!records.length) {
+
+        showCanvasMessage(
+            canvas,
+            "No curtailment records found."
+        );
+
+        return;
+
+    }
+
+
+    const grouped =
+        new Map();
+
+
+    records.forEach(
+        function (record) {
+
+            if (
+                !grouped.has(
+                    record.key
+                )
+            ) {
+
+                grouped.set(
+                    record.key,
+                    {
+
+                        date:
+                            record.date,
+
+                        loss:
+                            0
+
+                    }
+                );
+
+            }
+
+
+            grouped.get(
+                record.key
+            ).loss +=
+                record.loss;
+
+        }
+    );
+
+
+    const daily =
+        Array.from(
+            grouped.values()
+        )
+        .sort(
+            function (a, b) {
+
+                return (
+                    a.date -
+                    b.date
+                );
+
+            }
+        );
+
+
+    const labels =
+        daily.map(
+            function (record) {
+
+                return formatShortDate(
+                    record.date
+                );
+
+            }
+        );
+
+
+    const values =
+        daily.map(
+            function (record) {
+
+                return record.loss;
+
+            }
+        );
+
+
+    const width =
+        Math.max(
+            750,
+            labels.length * 65
+        );
+
+
+    makeChartScrollable(
+        canvas,
+        width
+    );
+
+
+    charts.curtailmentChart =
+        new Chart(
+            canvas.getContext(
+                "2d"
+            ),
+            {
+
+                type:
+                    "line",
+
+                data: {
+
+                    labels,
+
+                    datasets: [
+
+                        {
+
+                            label:
+                                "Curtailment Loss (MWh)",
+
+                            data:
+                                values,
+
+                            borderWidth:
+                                2,
+
+                            pointRadius:
+                                3,
+
+                            pointHoverRadius:
+                                6,
+
+                            tension:
+                                0.20,
+
+                            fill:
+                                false
+
+                        }
+
+                    ]
+
+                },
+
+
+                options: {
+
+                    responsive:
+                        false,
+
+                    maintainAspectRatio:
+                        false,
+
+                    animation:
+                        false,
+
+
+                    interaction: {
+
+                        mode:
+                            "index",
+
+                        intersect:
+                            false
+
+                    },
+
+
+                    plugins: {
+
+                        legend: {
+
+                            display:
+                                false
+
+                        }
+
+                    },
+
+
+                    scales: {
+
+                        x: {
+
+                            grid: {
+
+                                display:
+                                    false
+
+                            },
+
+                            ticks: {
+
+                                autoSkip:
+                                    true,
+
+                                maxTicksLimit:
+                                    15,
+
+                                maxRotation:
+                                    0,
+
+                                minRotation:
+                                    0
+
+                            },
+
+                            title: {
+
+                                display:
+                                    true,
+
+                                text:
+                                    "Date"
+
+                            }
+
+                        },
+
+
+                        y: {
+
+                            beginAtZero:
+                                true,
+
+                            title: {
+
+                                display:
+                                    true,
+
+                                text:
+                                    "Curtailment Loss (MWh)"
+
+                            }
+
+                        }
+
+                    }
+
+                }
+
+            }
+        );
+
+
+    const total =
+        values.reduce(
+            function (sum, value) {
+
+                return sum + value;
+
+            },
+            0
+        );
+
+
+    setText(
+        "curtailmentSummary",
+        `${daily.length} date(s) · ${formatNumber(total)} MWh total generation loss`
+    );
 
 }
 
@@ -4559,7 +4824,7 @@ function renderCurtailmentTable(
 
 
     records.forEach(
-        record => {
+        function (record) {
 
             if (
                 !map.has(
@@ -4607,9 +4872,14 @@ function renderCurtailmentTable(
             map.values()
         )
         .sort(
-            (a, b) =>
-                a.date -
-                b.date
+            function (a, b) {
+
+                return (
+                    a.date -
+                    b.date
+                );
+
+            }
         );
 
 
@@ -4650,27 +4920,27 @@ function renderCurtailmentTable(
                 <tr>
 
                     <th style="
-                        text-align:left;
                         padding:10px;
+                        text-align:left;
                         border-bottom:1px solid #e1ebed;
                     ">
                         Date
                     </th>
 
                     <th style="
-                        text-align:right;
                         padding:10px;
+                        text-align:right;
                         border-bottom:1px solid #e1ebed;
                     ">
                         Loss of Generation (MWh)
                     </th>
 
                     <th style="
-                        text-align:right;
                         padding:10px;
+                        text-align:right;
                         border-bottom:1px solid #e1ebed;
                     ">
-                        Intervals
+                        Number of Intervals
                     </th>
 
                 </tr>
@@ -4682,7 +4952,7 @@ function renderCurtailmentTable(
 
 
     daily.forEach(
-        item => {
+        function (item) {
 
             html += `
 
@@ -4738,9 +5008,14 @@ function renderCurtailmentTable(
 
     const total =
         daily.reduce(
-            (sum, item) =>
-                sum +
-                item.loss,
+            function (sum, item) {
+
+                return (
+                    sum +
+                    item.loss
+                );
+
+            },
             0
         );
 
@@ -4887,7 +5162,7 @@ function renderCurtailmentGantt(
 
         showCanvasMessage(
             canvas,
-            "No curtailment intervals found."
+            "No curtailment duration records found."
         );
 
         return;
@@ -4895,38 +5170,31 @@ function renderCurtailmentGantt(
     }
 
 
-    const width =
-        Math.max(
-            card.clientWidth || 700,
-            3120
-        );
-
-
-    makeChartScrollable(
+    prepareScrollableCanvas(
         canvas,
-        width
+        2400
     );
 
 
-    const labels = [];
+    const uniqueDates = [];
 
 
     records.forEach(
-        record => {
+        function (record) {
 
             const label =
-                shortDate(
+                formatShortDate(
                     record.date
                 );
 
 
             if (
-                !labels.includes(
+                !uniqueDates.includes(
                     label
                 )
             ) {
 
-                labels.push(
+                uniqueDates.push(
                     label
                 );
 
@@ -4938,8 +5206,18 @@ function renderCurtailmentGantt(
 
     const datasets =
         records
+            .filter(
+                function (record) {
+
+                    return (
+                        record.end > 360 &&
+                        record.start < 1080
+                    );
+
+                }
+            )
             .map(
-                record => {
+                function (record) {
 
                     const start =
                         Math.max(
@@ -4967,7 +5245,13 @@ function renderCurtailmentGantt(
                     return {
 
                         label:
-                            `${shortDate(record.date)} ${minutesToTime(start)}–${minutesToTime(end)}`,
+                            `${formatShortDate(
+                                record.date
+                            )} ${minutesToTime(
+                                start
+                            )}–${minutesToTime(
+                                end
+                            )}`,
 
                         data: [
 
@@ -4979,7 +5263,7 @@ function renderCurtailmentGantt(
                                 ],
 
                                 y:
-                                    shortDate(
+                                    formatShortDate(
                                         record.date
                                     )
 
@@ -5007,7 +5291,11 @@ function renderCurtailmentGantt(
                 }
             )
             .filter(
-                Boolean
+                function (item) {
+
+                    return Boolean(item);
+
+                }
             );
 
 
@@ -5023,7 +5311,8 @@ function renderCurtailmentGantt(
 
                 data: {
 
-                    labels,
+                    labels:
+                        uniqueDates,
 
                     datasets
 
@@ -5054,6 +5343,50 @@ function renderCurtailmentGantt(
 
                             display:
                                 false
+
+                        },
+
+
+                        tooltip: {
+
+                            callbacks: {
+
+                                title:
+                                    function (context) {
+
+                                        return (
+                                            context[0]
+                                                ?.raw
+                                                ?.y ||
+                                            ""
+                                        );
+
+                                    },
+
+
+                                label:
+                                    function (context) {
+
+                                        const raw =
+                                            context.raw;
+
+
+                                        if (!raw) {
+                                            return "";
+                                        }
+
+
+                                        return (
+                                            `Time: ${minutesToTime(
+                                                raw.x[0]
+                                            )} – ${minutesToTime(
+                                                raw.x[1]
+                                            )}`
+                                        );
+
+                                    }
+
+                            }
 
                         }
 
@@ -5088,11 +5421,24 @@ function renderCurtailmentGantt(
                                 stepSize:
                                     15,
 
+                                maxRotation:
+                                    0,
+
                                 callback:
-                                    value =>
-                                        minutesToTime(
+                                    function (value) {
+
+                                        return minutesToTime(
                                             value
-                                        )
+                                        );
+
+                                    }
+
+                            },
+
+                            grid: {
+
+                                color:
+                                    "rgba(23,37,42,0.08)"
 
                             }
 
@@ -5104,7 +5450,8 @@ function renderCurtailmentGantt(
                             type:
                                 "category",
 
-                            labels,
+                            labels:
+                                uniqueDates,
 
                             title: {
 
@@ -5137,9 +5484,7 @@ function renderCurtailmentGantt(
 
 /* =========================================================
    MONTHLY PR
-   Annual_KPI
-   H10:H21 = Target
-   I10:I21 = Measured
+   Annual_KPI H10:I21
 ========================================================= */
 
 function readMonthlyPR() {
@@ -5156,6 +5501,7 @@ function readMonthlyPR() {
 
 
     const months = [
+
         "April",
         "May",
         "June",
@@ -5168,6 +5514,7 @@ function readMonthlyPR() {
         "January",
         "February",
         "March"
+
     ];
 
 
@@ -5226,12 +5573,6 @@ function readMonthlyPR() {
     }
 
 
-    console.log(
-        "Monthly PR:",
-        result
-    );
-
-
     return result;
 
 }
@@ -5287,7 +5628,7 @@ function ensureMonthlyPRCard() {
                     </h3>
 
                     <span>
-                        Annual_KPI · Measured PR(%) · Column I
+                        Annual_KPI · Measured PR (%) · Column I
                     </span>
 
                 </div>
@@ -5307,28 +5648,9 @@ function ensureMonthlyPRCard() {
         `;
 
 
-        const grid =
-            section.querySelector(
-                ".three-chart-grid"
-            );
-
-
-        if (grid) {
-
-            grid.insertAdjacentElement(
-                "afterend",
-                card
-            );
-
-        }
-
-        else {
-
-            section.appendChild(
-                card
-            );
-
-        }
+        section.appendChild(
+            card
+        );
 
     }
 
@@ -5339,7 +5661,7 @@ function ensureMonthlyPRCard() {
 
 
 /* =========================================================
-   MONTHLY PR GRAPH
+   MONTHLY PR CHART
 ========================================================= */
 
 function renderMonthlyPRChart() {
@@ -5397,8 +5719,9 @@ function renderMonthlyPRChart() {
 
                     labels:
                         records.map(
-                            record =>
-                                record.month
+                            function (record) {
+                                return record.month;
+                            }
                         ),
 
                     datasets: [
@@ -5410,8 +5733,9 @@ function renderMonthlyPRChart() {
 
                             data:
                                 records.map(
-                                    record =>
-                                        record.measured
+                                    function (record) {
+                                        return record.measured;
+                                    }
                                 ),
 
                             borderWidth:
@@ -5480,8 +5804,14 @@ function renderMonthlyPRChart() {
                                     10,
 
                                 callback:
-                                    value =>
-                                        `${value}%`
+                                    function (value) {
+
+                                        return (
+                                            value +
+                                            "%"
+                                        );
+
+                                    }
 
                             }
 
@@ -5521,6 +5851,7 @@ function renderMonthlyPRChart() {
 
 /* =========================================================
    ENERGY
+   E10:E21 / F10:F21
 ========================================================= */
 
 function renderEnergyChart() {
@@ -5546,22 +5877,25 @@ function renderEnergyChart() {
 
 
     const labels = [
-        "April",
+
+        "Apr",
         "May",
-        "June",
-        "July",
-        "August",
-        "September",
-        "October",
-        "November",
-        "December",
-        "January",
-        "February",
-        "March"
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec",
+        "Jan",
+        "Feb",
+        "Mar"
+
     ];
 
 
     const budget = [];
+
     const measured = [];
 
 
@@ -5591,44 +5925,62 @@ function renderEnergyChart() {
 
     const totalBudget =
         budget.reduce(
-            (sum, value) =>
-                sum +
-                (
-                    value || 0
-                ),
+            function (sum, value) {
+
+                return (
+                    sum +
+                    (
+                        value || 0
+                    )
+                );
+
+            },
             0
         );
 
 
     const totalMeasured =
         measured.reduce(
-            (sum, value) =>
-                sum +
-                (
-                    value || 0
-                ),
+            function (sum, value) {
+
+                return (
+                    sum +
+                    (
+                        value || 0
+                    )
+                );
+
+            },
             0
         );
 
 
+    const variance =
+        totalMeasured -
+        totalBudget;
+
+
     setText(
         "totalBudget",
-        `${formatNumber(totalBudget)}`
+        `${formatNumber(
+            totalBudget
+        )} MWh`
     );
 
 
     setText(
         "totalMeasured",
-        `${formatNumber(totalMeasured)}`
+        `${formatNumber(
+            totalMeasured
+        )} MWh`
     );
 
 
     setText(
         "energyVariance",
         `${formatNumber(
-            totalMeasured -
-            totalBudget
-        )}`
+            variance
+        )} MWh`
     );
 
 
@@ -5669,6 +6021,7 @@ function renderEnergyChart() {
 
                         },
 
+
                         {
 
                             label:
@@ -5706,6 +6059,9 @@ function renderEnergyChart() {
 
                         legend: {
 
+                            display:
+                                true,
+
                             position:
                                 "top"
 
@@ -5723,6 +6079,16 @@ function renderEnergyChart() {
                                 display:
                                     false
 
+                            },
+
+                            title: {
+
+                                display:
+                                    true,
+
+                                text:
+                                    "Month"
+
                             }
 
                         },
@@ -5739,7 +6105,7 @@ function renderEnergyChart() {
                                     true,
 
                                 text:
-                                    "Energy"
+                                    "Energy (MWh)"
 
                             }
 
@@ -5756,7 +6122,7 @@ function renderEnergyChart() {
 
 
 /* =========================================================
-   CANVAS MESSAGE
+   CANVAS EMPTY MESSAGE
 ========================================================= */
 
 function showCanvasMessage(
@@ -5820,19 +6186,116 @@ function showCanvasMessage(
 
 
 /* =========================================================
+   RENDER ALL
+========================================================= */
+
+function renderAll() {
+
+    if (!workbook) {
+        return;
+    }
+
+
+    destroyAllCharts();
+
+    removeDynamicCards();
+
+
+    /*
+       DAILY KPI
+    */
+
+    const daily =
+        readDailyKPI();
+
+
+    if (daily.length) {
+
+        renderDailyCharts(
+            daily
+        );
+
+    }
+
+
+    /*
+       PA
+    */
+
+    renderPlantUnavailability();
+
+    renderBreakdownTimeline();
+
+    renderSystemLossMWh();
+
+
+    /*
+       CURTAILMENT
+    */
+
+    const curtailment =
+        readCurtailment();
+
+
+    renderCurtailmentLossChart(
+        curtailment
+    );
+
+
+    renderCurtailmentTable(
+        curtailment
+    );
+
+
+    renderCurtailmentGantt(
+        curtailment
+    );
+
+
+    /*
+       MONTHLY PR
+    */
+
+    renderMonthlyPRChart();
+
+
+    /*
+       ENERGY
+    */
+
+    renderEnergyChart();
+
+
+    /*
+       Status
+    */
+
+    if (
+        daily.length
+    ) {
+
+        setStatus(
+            `${workbook.SheetNames.length} worksheets loaded • ${daily.length} daily KPI records analysed`
+        );
+
+    }
+
+}
+
+
+/* =========================================================
    RESET
 ========================================================= */
 
 function resetDashboard() {
 
-    workbook =
-        null;
-
-
     destroyAllCharts();
 
-
     removeDynamicCards();
+
+
+    workbook =
+        null;
 
 
     if (fileInput) {
@@ -5874,6 +6337,27 @@ function resetDashboard() {
     hideAnalytics();
 
 
+    [
+        "dashboardPA",
+        "dashboardPR",
+        "dashboardLoss",
+        "dashboardHours",
+        "totalBudget",
+        "totalMeasured",
+        "energyVariance"
+    ]
+    .forEach(
+        function (id) {
+
+            setText(
+                id,
+                "—"
+            );
+
+        }
+    );
+
+
     setText(
         "fileName",
         "—"
@@ -5893,48 +6377,6 @@ function resetDashboard() {
 
 
     setText(
-        "dashboardPA",
-        "—"
-    );
-
-
-    setText(
-        "dashboardPR",
-        "—"
-    );
-
-
-    setText(
-        "dashboardLoss",
-        "—"
-    );
-
-
-    setText(
-        "dashboardHours",
-        "—"
-    );
-
-
-    setText(
-        "totalBudget",
-        "—"
-    );
-
-
-    setText(
-        "totalMeasured",
-        "—"
-    );
-
-
-    setText(
-        "energyVariance",
-        "—"
-    );
-
-
-    setText(
         "curtailmentSummary",
         "Waiting for DGR data"
     );
@@ -5943,87 +6385,6 @@ function resetDashboard() {
     setStatus(
         "Upload a DGR to generate the analytics."
     );
-
-}
-
-
-/* =========================================================
-   RENDER EVERYTHING
-========================================================= */
-
-function renderAll() {
-
-    if (!workbook) {
-        return;
-    }
-
-
-    destroyAllCharts();
-
-
-    removeDynamicCards();
-
-
-    /*
-       DAILY KPI
-    */
-
-    const daily =
-        readDailyKPI();
-
-
-    if (
-        daily.length
-    ) {
-
-        renderDailyCharts(
-            daily
-        );
-
-    }
-
-
-    /*
-       PA
-    */
-
-    renderPlantUnavailability();
-
-    renderBreakdownTimeline();
-
-    renderSystemLossMWh();
-
-
-    /*
-       CURTAILMENT
-    */
-
-    const curtailment =
-        readCurtailment();
-
-
-    renderCurtailmentTable(
-        curtailment
-    );
-
-
-    renderCurtailmentGantt(
-        curtailment
-    );
-
-
-    /*
-       MONTHLY PR
-    */
-
-    renderMonthlyPRChart();
-
-
-    /*
-       ENERGY
-    */
-
-    renderEnergyChart();
 
 }
 
