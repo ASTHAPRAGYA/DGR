@@ -3728,199 +3728,125 @@ function ensureBreakdownCard() {
 }
 
 
-/* =========================================================
-   BREAKDOWN CHART
-========================================================= */
+function readBreakdownTimeline() {
 
-function renderBreakdownTimeline() {
-
-    const card =
-        ensureBreakdownCard();
+    const sheet =
+        getSheet("PA");
 
 
-    if (!card) {
-        return;
+    if (!sheet) {
+        return [];
     }
 
 
-    const canvas =
-        $("breakdownChart");
+    const rows =
+        toMatrix(sheet);
 
 
-    if (!canvas) {
-        return;
-    }
+    const grouped =
+        new Map();
 
 
-    destroyChart(
-        "breakdownChart"
+    rows.forEach(
+        function (row) {
+
+            const date =
+                parseDate(
+                    getCell(
+                        row,
+                        "B"
+                    )
+                );
+
+
+            const minutes =
+                parseNumber(
+                    getCell(
+                        row,
+                        "AG"
+                    )
+                );
+
+
+            if (
+                !date ||
+                minutes === null
+            ) {
+
+                return;
+
+            }
+
+
+            const key =
+                dateKey(
+                    date
+                );
+
+
+            if (
+                !grouped.has(
+                    key
+                )
+            ) {
+
+                grouped.set(
+                    key,
+                    {
+
+                        date:
+                            new Date(
+                                date.getFullYear(),
+                                date.getMonth(),
+                                date.getDate()
+                            ),
+
+                        minutes:
+                            0
+
+                    }
+                );
+
+            }
+
+
+            grouped.get(
+                key
+            ).minutes +=
+                minutes;
+
+        }
     );
 
 
-    const records =
-        readBreakdownTimeline();
+    return Array.from(
+        grouped.values()
+    )
+    .sort(
+        function (a, b) {
+
+            return (
+                a.date -
+                b.date
+            );
+
+        }
+    );
+
+}
+function readSystemLossMWh() {
+
+    const sheet =
+        getSheet("PA");
 
 
-    if (!records.length) {
-
-        showCanvasMessage(
-            canvas,
-            "No breakdown timeline records found."
-        );
-
-        return;
-
+    if (!sheet) {
+        return [];
     }
 
 
-    charts.breakdownChart =
-        new Chart(
-            canvas.getContext(
-                "2d"
-            ),
-            {
-
-                type:
-                    "bar",
-
-                data: {
-
-                    labels:
-                        records.map(
-                            function (record) {
-                                return formatShortDate(
-                                    record.date
-                                );
-                            }
-                        ),
-
-                    datasets: [
-
-                        {
-
-                            label:
-                                "Breakdown Time (min)",
-
-                            data:
-                                records.map(
-                                    function (record) {
-                                        return record.minutes;
-                                    }
-                                ),
-
-                            borderWidth:
-                                1,
-
-                            borderRadius:
-                                4
-
-                        }
-
-                    ]
-
-                },
-
-
-                options: {
-
-                    indexAxis:
-                        "y",
-
-                    responsive:
-                        true,
-
-                    maintainAspectRatio:
-                        false,
-
-                    animation:
-                        false,
-
-
-                    plugins: {
-
-                        legend: {
-
-                            display:
-                                false
-
-                        }
-
-                    },
-
-
-                    scales: {
-
-                        x: {
-
-                            min:
-                                0,
-
-                            max:
-                                13,
-
-                            ticks: {
-
-                                stepSize:
-                                    1
-
-                            },
-
-                            title: {
-
-                                display:
-                                    true,
-
-                                text:
-                                    "Breakdown Time (minutes)"
-
-                            }
-
-                        },
-
-
-                        y: {
-
-                            grid: {
-
-                                display:
-                                    false
-
-                            },
-
-                            title: {
-
-                                display:
-                                    true,
-
-                                text:
-                                    "Date"
-
-                            }
-
-                        }
-
-                    }
-
-                }
-
-            }
-        );
-
-}
-
-
-/* =========================================================
-   SYSTEM LOSS MWh
-========================================================= */
-
-function readSystemLossMWh() {
-
     const rows =
-        toMatrix(
-            getSheet(
-                "PA"
-            )
-        );
+        toMatrix(sheet);
 
 
     const grouped =
@@ -4014,8 +3940,6 @@ function readSystemLossMWh() {
     );
 
 }
-
-
 /* =========================================================
    SYSTEM LOSS CARD
 ========================================================= */
@@ -4427,7 +4351,13 @@ function renderCurtailmentLossChart(
 
 
     if (!canvas) {
+
+        console.error(
+            "curtailmentChart canvas not found"
+        );
+
         return;
+
     }
 
 
@@ -4436,7 +4366,7 @@ function renderCurtailmentLossChart(
     );
 
 
-    if (!records.length) {
+    if (!records || !records.length) {
 
         showCanvasMessage(
             canvas,
@@ -4447,6 +4377,11 @@ function renderCurtailmentLossChart(
 
     }
 
+
+    /*
+       Merge all curtailment losses
+       belonging to the same date.
+    */
 
     const grouped =
         new Map();
@@ -4480,7 +4415,9 @@ function renderCurtailmentLossChart(
             grouped.get(
                 record.key
             ).loss +=
-                record.loss;
+                Number(
+                    record.loss
+                ) || 0;
 
         }
     );
@@ -4502,12 +4439,18 @@ function renderCurtailmentLossChart(
         );
 
 
+    console.log(
+        "Daily Curtailment:",
+        daily
+    );
+
+
     const labels =
         daily.map(
-            function (record) {
+            function (item) {
 
                 return formatShortDate(
-                    record.date
+                    item.date
                 );
 
             }
@@ -4516,13 +4459,18 @@ function renderCurtailmentLossChart(
 
     const values =
         daily.map(
-            function (record) {
+            function (item) {
 
-                return record.loss;
+                return item.loss;
 
             }
         );
 
+
+    /*
+       Make chart internally wider than
+       the visible card when many dates exist.
+    */
 
     const width =
         Math.max(
@@ -4539,9 +4487,7 @@ function renderCurtailmentLossChart(
 
     charts.curtailmentChart =
         new Chart(
-            canvas.getContext(
-                "2d"
-            ),
+            canvas.getContext("2d"),
             {
 
                 type:
@@ -4687,7 +4633,10 @@ function renderCurtailmentLossChart(
         values.reduce(
             function (sum, value) {
 
-                return sum + value;
+                return (
+                    sum +
+                    value
+                );
 
             },
             0
@@ -4700,8 +4649,6 @@ function renderCurtailmentLossChart(
     );
 
 }
-
-
 /* =========================================================
    CURTAILMENT TABLE CARD
 ========================================================= */
@@ -5850,8 +5797,7 @@ function renderMonthlyPRChart() {
 
 
 /* =========================================================
-   ENERGY
-   E10:E21 / F10:F21
+   BUDGETED VS MEASURED ENERGY
 ========================================================= */
 
 function renderEnergyChart() {
@@ -5866,14 +5812,31 @@ function renderEnergyChart() {
         $("energyChart");
 
 
-    if (
-        !sheet ||
-        !canvas
-    ) {
+    if (!sheet) {
+
+        console.error(
+            "Annual_KPI sheet not found"
+        );
 
         return;
 
     }
+
+
+    if (!canvas) {
+
+        console.error(
+            "energyChart canvas not found"
+        );
+
+        return;
+
+    }
+
+
+    destroyChart(
+        "energyChart"
+    );
 
 
     const labels = [
@@ -5899,29 +5862,63 @@ function renderEnergyChart() {
     const measured = [];
 
 
+    /*
+       EXACT WORKBOOK LOCATIONS
+
+       E10:E21 = Budgeted Energy
+       F10:F21 = Measured Energy
+    */
+
     for (
         let row = 10;
         row <= 21;
         row++
     ) {
 
-        budget.push(
+        const budgetValue =
             readNumericCell(
                 sheet,
                 `E${row}`
-            )
+            );
+
+
+        const measuredValue =
+            readNumericCell(
+                sheet,
+                `F${row}`
+            );
+
+
+        budget.push(
+            budgetValue === null
+                ? 0
+                : budgetValue
         );
 
 
         measured.push(
-            readNumericCell(
-                sheet,
-                `F${row}`
-            )
+            measuredValue === null
+                ? 0
+                : measuredValue
         );
 
     }
 
+
+    console.log(
+        "Budget:",
+        budget
+    );
+
+    console.log(
+        "Measured:",
+        measured
+    );
+
+
+    /*
+       Totals
+    */
 
     const totalBudget =
         budget.reduce(
@@ -5929,9 +5926,7 @@ function renderEnergyChart() {
 
                 return (
                     sum +
-                    (
-                        value || 0
-                    )
+                    value
                 );
 
             },
@@ -5945,9 +5940,7 @@ function renderEnergyChart() {
 
                 return (
                     sum +
-                    (
-                        value || 0
-                    )
+                    value
                 );
 
             },
@@ -5962,38 +5955,25 @@ function renderEnergyChart() {
 
     setText(
         "totalBudget",
-        `${formatNumber(
-            totalBudget
-        )} MWh`
+        `${formatNumber(totalBudget)} MWh`
     );
 
 
     setText(
         "totalMeasured",
-        `${formatNumber(
-            totalMeasured
-        )} MWh`
+        `${formatNumber(totalMeasured)} MWh`
     );
 
 
     setText(
         "energyVariance",
-        `${formatNumber(
-            variance
-        )} MWh`
-    );
-
-
-    destroyChart(
-        "energyChart"
+        `${formatNumber(variance)} MWh`
     );
 
 
     charts.energyChart =
         new Chart(
-            canvas.getContext(
-                "2d"
-            ),
+            canvas.getContext("2d"),
             {
 
                 type:
@@ -6118,10 +6098,7 @@ function renderEnergyChart() {
             }
         );
 
-}
-
-
-/* =========================================================
+}======================================================
    CANVAS EMPTY MESSAGE
 ========================================================= */
 
@@ -6195,19 +6172,20 @@ function renderAll() {
         return;
     }
 
+    console.log("===== RENDERING DGR =====");
 
     destroyAllCharts();
 
     removeDynamicCards();
 
-
-    /*
+    /* -----------------------------------------------------
        DAILY KPI
-    */
+    ----------------------------------------------------- */
 
     const daily =
         readDailyKPI();
 
+    console.log("Daily KPI:", daily);
 
     if (daily.length) {
 
@@ -6218,9 +6196,9 @@ function renderAll() {
     }
 
 
-    /*
+    /* -----------------------------------------------------
        PA
-    */
+    ----------------------------------------------------- */
 
     renderPlantUnavailability();
 
@@ -6229,60 +6207,48 @@ function renderAll() {
     renderSystemLossMWh();
 
 
-    /*
+    /* -----------------------------------------------------
        CURTAILMENT
-    */
+    ----------------------------------------------------- */
 
     const curtailment =
         readCurtailment();
 
+    console.log(
+        "Curtailment records:",
+        curtailment
+    );
 
     renderCurtailmentLossChart(
         curtailment
     );
 
-
     renderCurtailmentTable(
         curtailment
     );
-
 
     renderCurtailmentGantt(
         curtailment
     );
 
 
-    /*
+    /* -----------------------------------------------------
        MONTHLY PR
-    */
+    ----------------------------------------------------- */
 
     renderMonthlyPRChart();
 
 
-    /*
+    /* -----------------------------------------------------
        ENERGY
-    */
+    ----------------------------------------------------- */
 
     renderEnergyChart();
 
 
-    /*
-       Status
-    */
-
-    if (
-        daily.length
-    ) {
-
-        setStatus(
-            `${workbook.SheetNames.length} worksheets loaded • ${daily.length} daily KPI records analysed`
-        );
-
-    }
+    console.log("===== DGR RENDER COMPLETE =====");
 
 }
-
-
 /* =========================================================
    RESET
 ========================================================= */
