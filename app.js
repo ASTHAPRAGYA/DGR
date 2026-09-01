@@ -1,5 +1,4 @@
-make a new code from two codes i'm sending below-
-curtailment, budgeted vs measured energy, breakdown timeline from the code below-
+
 /* =========================================================
    SOLAR DGR ANALYTICS
    app.js
